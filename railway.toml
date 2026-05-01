@@ -1,0 +1,28 @@
+# inv2digikey — Railway deployment configuration
+# Docs: https://docs.railway.com/reference/config-as-code
+
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "uvicorn main:app --host 0.0.0.0 --port $PORT"
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 5
+
+# ── Persistent storage ────────────────────────────────────────────────────────
+# The app writes its SQLite database to /app/data/inventory.db.
+# Without a Railway Volume that directory is wiped on every deploy.
+#
+# One-time setup in the Railway dashboard:
+#   1. Open your service → Volumes tab
+#   2. Click "Add Volume"
+#   3. Set Mount Path to:  /app/data
+#   4. Save — done. The database will now survive all future deploys.
+#
+# ── Required environment variables ───────────────────────────────────────────
+#   SECRET_KEY    JWT signing secret
+#                 Generate with:  openssl rand -hex 32
+#
+# ── Optional environment variables ───────────────────────────────────────────
+#   DB_DIR        Override database directory   (default: ./data)
+#   SETUP_TOKEN   Token required to register users after the first account

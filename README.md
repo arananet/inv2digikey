@@ -65,25 +65,46 @@ pytest
 
 ## Deployment on Railway
 
-1. Create a new Railway project and link this repo
-2. Add a **PostgreSQL** plugin — Railway sets `DATABASE_URL` automatically
-3. Set environment variables:
-   | Variable | Description |
-   |---|---|
-   | `SECRET_KEY` | Random secret for JWT signing (generate with `openssl rand -hex 32`) |
-   | `DATABASE_URL` | Set automatically by Railway PostgreSQL plugin |
-   | `SETUP_TOKEN` | *(optional)* Token required for registering users after the first |
-4. Deploy — Railway auto-detects `Procfile` and starts the app
+```mermaid
+flowchart LR
+    A([Push to main]) --> B[Railway builds with Nixpacks]
+    B --> C[App starts on $PORT]
+    C --> D[(Volume: /app/data/inventory.db)]
+    D -->|survives deploys| D
+```
+
+### Step-by-step
+
+**1. Create the Railway service**
+- New project → Deploy from GitHub repo → select `arananet/inv2digikey`
+
+**2. Add a persistent Volume** *(critical — do this before first use)*
+- Service → **Volumes** tab → **Add Volume**
+- Mount path: `/app/data`
+- This directory survives every future deploy and restart. Without it the database resets on each deploy.
+
+**3. Set environment variables**
+- Service → **Variables** tab
+
+| Variable | Required | How to get it |
+|---|---|---|
+| `SECRET_KEY` | **Yes** | Run `openssl rand -hex 32` in any terminal |
+| `SETUP_TOKEN` | No | Any string — required to register a second user |
+
+> `DATABASE_URL` is **not** needed. The app uses SQLite stored in the volume at `/app/data/inventory.db`.
+
+**4. Deploy**
+Railway auto-detects `railway.toml` and starts the app. First visit → register your account → start scanning.
 
 ---
 
 ## Environment variables
 
-| Variable | Required | Description |
+| Variable | Default | Description |
 |---|---|---|
-| `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `SECRET_KEY` | Yes | JWT signing secret |
-| `SETUP_TOKEN` | No | If set, blocks new user registration unless this token is provided |
+| `SECRET_KEY` | *(none)* | JWT signing secret — **set this** |
+| `DB_DIR` | `./data` | Directory for `inventory.db`. Set to `/app/data` automatically when volume is mounted at that path |
+| `SETUP_TOKEN` | *(none)* | If set, required to register users after the first account |
 
 ---
 
