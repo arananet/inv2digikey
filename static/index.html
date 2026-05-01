@@ -21,8 +21,40 @@
 <div id="app"></div>
 
 <script type="module">
-// ── ZXing WASM (C++ port — reliable Data Matrix support) ──────────────────────
-import { readBarcodes } from 'https://esm.sh/@sec-ant/zxing-wasm@1/full';
+// ── Barcode detector: native API (Chrome/Android) → ZXing WASM fallback ───────
+let _detector = null;
+
+async function getDetector() {
+  if (_detector) return _detector;
+
+  const fmts = ['data_matrix','qr_code','code_128','code_39','ean_13','ean_8','upc_a','upc_e','pdf417'];
+
+  if ('BarcodeDetector' in window) {
+    try {
+      const supported = await window.BarcodeDetector.getSupportedFormats();
+      const use = fmts.filter(f => supported.includes(f));
+      _detector = new window.BarcodeDetector({ formats: use.length ? use : fmts });
+      return _detector;
+    } catch (_) { /* fall through */ }
+  }
+
+  // Fallback: ZXing WASM (correct main entry — no /full subpath)
+  const { readBarcodes } = await import('https://esm.sh/@sec-ant/zxing-wasm@1.1.3');
+  _detector = {
+    detect: async video => {
+      const canvas = new OffscreenCanvas(video.videoWidth, video.videoHeight);
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(video, 0, 0);
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const results = await readBarcodes(imgData, {
+        formats: ['DataMatrix','QRCode','Code128','Code39','EAN-13','EAN-8','UPC-A','PDF417'],
+        tryHarder: true, tryRotate: true, tryInvert: true,
+      });
+      return results.map(r => ({ rawValue: r.text }));
+    },
+  };
+  return _detector;
+}
 
 // ── State ─────────────────────────────────────────────────────────────────────
 const S = {
@@ -330,20 +362,11 @@ async function decodeFrame(video) {
   if (!S.scannerRunning) return;
   if (video.readyState < video.HAVE_ENOUGH_DATA) { scheduleFrame(video); return; }
 
-  // Capture frame to offscreen canvas
-  const canvas = new OffscreenCanvas(video.videoWidth, video.videoHeight);
-  canvas.getContext('2d').drawImage(video, 0, 0);
-  const imageData = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
-
   try {
-    const results = await readBarcodes(imageData, {
-      formats: ['DataMatrix', 'QRCode', 'Code128', 'Code39', 'EAN-13', 'EAN-8', 'UPC-A', 'PDF417'],
-      tryHarder: true,
-      tryRotate: true,
-      tryInvert: true,
-    });
-    if (results.length > 0 && S.scannerRunning) {
-      onScanSuccess(results[0].text);
+    const detector = await getDetector();
+    const barcodes = await detector.detect(video);
+    if (barcodes.length > 0 && S.scannerRunning) {
+      onScanSuccess(barcodes[0].rawValue);
       return;
     }
   } catch (_) { /* ignore decode errors, keep scanning */ }
