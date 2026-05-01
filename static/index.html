@@ -337,12 +337,25 @@ function renderScanner() {
 
 function startScanner() {
   if (S.scannerRunning) return;
-  S.scanner = new Html5Qrcode('reader');
+
+  // Explicitly request Data Matrix + common 1D/2D formats so ZXing enables them all
+  const formats = [
+    Html5QrcodeSupportedFormats.DATA_MATRIX,
+    Html5QrcodeSupportedFormats.QR_CODE,
+    Html5QrcodeSupportedFormats.CODE_128,
+    Html5QrcodeSupportedFormats.CODE_39,
+    Html5QrcodeSupportedFormats.EAN_13,
+    Html5QrcodeSupportedFormats.EAN_8,
+    Html5QrcodeSupportedFormats.UPC_A,
+    Html5QrcodeSupportedFormats.UPC_E,
+  ];
+
+  S.scanner = new Html5Qrcode('reader', { formatsToSupport: formats });
   S.scannerRunning = true;
 
   S.scanner.start(
     { facingMode: 'environment' },
-    { fps: 10, qrbox: { width: 260, height: 260 }, aspectRatio: 1.0 },
+    { fps: 15, qrbox: { width: 280, height: 280 }, aspectRatio: 1.0 },
     onScanSuccess,
     () => {}
   ).catch(err => {
