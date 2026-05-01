@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-Security fixes are applied to the latest release line of `{{PROJECT_NAME}}`.
+Security fixes are applied to the latest release line of `inv2digikey`.
 Older releases receive fixes only when explicitly flagged in the
 [CHANGELOG](CHANGELOG.md).
 
@@ -20,7 +20,7 @@ preference:
 
 1. **GitHub Private Vulnerability Reporting** — open the repository's
    **Security** tab and click **Report a vulnerability**.
-2. **Email** — send details to `{{SECURITY_CONTACT}}`. Encrypt with the
+2. **Email** — send details to `security@example.com`. Encrypt with the
    project's PGP key if the report contains exploit details.
 
 ### What to include

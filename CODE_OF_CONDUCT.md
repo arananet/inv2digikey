@@ -15,7 +15,7 @@ channels operated by the project.
 ## Enforcement
 
 Reports of unacceptable behavior can be sent to the project maintainers at
-`{{SECURITY_CONTACT}}`. All reports are reviewed and investigated promptly
+`security@example.com`. All reports are reviewed and investigated promptly
 and fairly. Maintainers are obligated to respect the privacy and security of
 the reporter of any incident.
 

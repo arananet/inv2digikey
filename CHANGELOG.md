@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to `{{PROJECT_NAME}}` will be documented in this file.
+All notable changes to `inv2digikey` will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -43,5 +43,5 @@ Guidelines:
 ### Added
 - Initial release.
 
-[Unreleased]: https://github.com/{{GITHUB_OWNER}}/{{PROJECT_NAME}}/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/{{GITHUB_OWNER}}/{{PROJECT_NAME}}/releases/tag/v0.1.0
+[Unreleased]: https://github.com/arananet/inv2digikey/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/arananet/inv2digikey/releases/tag/v0.1.0

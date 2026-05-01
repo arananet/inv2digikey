@@ -1,0 +1,63 @@
+version: "1"
+slug: qr-scanner-inventory-app
+title: "QR & Barcode Scanner Inventory App"
+type: feature
+status: approved
+
+description: |
+  A mobile-friendly web application that lets users scan QR codes and barcodes
+  from electronic component bags (DigiKey, Mouser, etc.) using their device camera.
+  Scanned data is parsed and stored in a PostgreSQL database. Components can be
+  searched, edited, and managed. The app is protected by username/password
+  authentication and is deployable on Railway.
+
+acceptance_criteria:
+  - id: AC-01
+    description: "User can register with a username and password; the first user registers freely, subsequent registrations require a SETUP_TOKEN env var or are blocked."
+  - id: AC-02
+    description: "User can log in with username and password and receives a JWT; unauthenticated API requests return 401."
+  - id: AC-03
+    description: "Authenticated user can scan a barcode or QR code using the device camera; the scanner UI appears when the user taps the Scan button."
+  - id: AC-04
+    description: "DigiKey 2D Data Matrix barcodes are parsed: DigiKey PN (K prefix), manufacturer PN (1P prefix), quantity (30P prefix), and manufacturer name (4L prefix) are extracted into the correct fields."
+  - id: AC-05
+    description: "Plain barcodes (non-DigiKey format) are accepted; the raw value is placed in the DigiKey PN field and the user can fill in remaining fields manually."
+  - id: AC-06
+    description: "User can save a scanned (or manually entered) component with: DigiKey PN, manufacturer PN, manufacturer, description, quantity, location, and notes."
+  - id: AC-07
+    description: "Inventory list shows all components for the logged-in user; a search bar filters by DigiKey PN, manufacturer PN, description, or manufacturer in real time."
+  - id: AC-08
+    description: "User can edit or delete any of their components from the inventory view."
+  - id: AC-09
+    description: "The app is responsive and usable on mobile devices (≤ 480px viewport) with a bottom navigation bar."
+  - id: AC-10
+    description: "The app deploys on Railway: reads DATABASE_URL and SECRET_KEY from environment variables; starts with `uvicorn main:app --host 0.0.0.0 --port $PORT`."
+
+out_of_scope:
+  - Real-time DigiKey API price/stock lookup (stored part numbers enable this later)
+  - Mouser API integration
+  - Multi-user collaboration or sharing of inventories
+  - Barcode label printing
+  - CSV import/export
+
+test_plan:
+  - id: TP-01
+    ac: AC-01
+    description: "POST /api/auth/register with new credentials returns 200 and a JWT token when no users exist."
+  - id: TP-02
+    ac: AC-02
+    description: "POST /api/auth/login with valid credentials returns JWT; GET /api/components with no token returns 401."
+  - id: TP-03
+    ac: AC-06
+    description: "POST /api/components with all fields returns 200 and the saved component; GET /api/components returns it in the list."
+  - id: TP-04
+    ac: AC-07
+    description: "GET /api/components?search=RHM returns only components where PN or description contains 'RHM'."
+  - id: TP-05
+    ac: AC-08
+    description: "PUT /api/components/{id} updates fields; DELETE /api/components/{id} removes the component."
+  - id: TP-06
+    ac: AC-04
+    description: "JavaScript parseBarcode() correctly extracts DigiKey PN, manufacturer PN, and quantity from a sample DigiKey 2D barcode string."
+
+implementation_skill: null

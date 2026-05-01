@@ -12,12 +12,12 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 project:
-  name: "{{PROJECT_NAME}}"
-  owner: "{{GITHUB_OWNER}}"
-  team: "{{TEAM_NAME}}"
-  domain: "{{PROJECT_DOMAIN}}"
-  description: "{{PROJECT_DESCRIPTION}}"
-  tech_stack: "{{TECH_STACK}}"   # comma-separated, e.g. "python, fastapi, docker"
+  name: "inv2digikey"
+  owner: "arananet"
+  team: "arananet"
+  domain: "inventory"
+  description: "Mobile-friendly web app to scan QR codes and barcodes from electronic components, store inventory data, and match parts with DigiKey listings."
+  tech_stack: "python, fastapi, react, postgres, docker"
 
 spec:
   required_fields:
@@ -37,7 +37,7 @@ spec:
 
 testing:
   require_tests: true
-  test_command: "{{TEST_COMMAND}}"
+  test_command: "pytest"
   coverage_threshold: null
   fail_on_missing_tests: true
 

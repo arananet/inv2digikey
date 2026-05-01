@@ -1,270 +1,138 @@
-# {{PROJECT_NAME}}
+# inv2digikey
 
-{{BADGES}}
+![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white) ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white) ![React](https://img.shields.io/badge/React-61DAFB?logo=react&logoColor=black) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white) ![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white) ![OpenSpec](https://img.shields.io/badge/OpenSpec-enforced-blueviolet) ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-{{PROJECT_DESCRIPTION}}
+Mobile-friendly web app to scan QR codes and barcodes from electronic components, store inventory data, and match parts with DigiKey listings.
 
 ---
 
-## What is OpenSpec?
+## Features
 
-OpenSpec is a spec-driven development framework built into this repo. Every feature or bugfix starts with a spec file — no spec, no code. Specs define acceptance criteria, test plans, and the domain skill to use during implementation.
-
-**Layers of enforcement:**
-
-| Layer | When | What |
-|---|---|---|
-| Git hook (local) | `git commit` | Blocks commits with source changes but no spec |
-| Pre-commit framework (optional) | `git commit` | Runs gitleaks, yamllint, markdownlint, shellcheck |
-| CI — deterministic | Every PR | Validates spec fields, status, test_plan, and runs the test suite |
-| CI — agentic | Every PR | AI checks if the implementation actually satisfies the spec |
-| CI — security | Every PR | CodeQL SAST, gitleaks secret scan, dependency review |
-| CI — supply chain | Every release | CycloneDX SBOM generation |
+- **Barcode & QR Code scanning** — uses your device camera to scan DigiKey Data Matrix codes, QR codes, and standard barcodes
+- **Auto-parsing** — extracts DigiKey PN, manufacturer PN, quantity, and description directly from scanned labels
+- **Inventory management** — store, search, edit, and delete component entries with quantities and locations
+- **DigiKey integration** — stores DigiKey and manufacturer part numbers for easy cross-reference
+- **Authentication** — username/password protected; first user registers freely, subsequent users require a setup token
+- **Mobile-first UI** — responsive design optimized for smartphone use in the field
+- **Railway-ready** — deploys in one click with PostgreSQL add-on
 
 ---
 
 ## How it works
 
 ```mermaid
-flowchart TD
-    A([New feature or bugfix]) --> B{Spec exists?}
-    B -- No --> C["/openspec-scaffold\nor: gh openspec scaffold"]
-    C --> D[Fill in acceptance_criteria\nand test_plan]
-    D --> E{status = review?}
-    B -- Yes --> E
-    E -- draft --> D
-    E -- review/approved --> F["/openspec-implement\ninvokes domain skill if set"]
-    F --> G[Write tests per test_plan]
-    G --> H([Open PR])
-    H --> I[spec-check.yml\ndeterministic gate]
-    H --> J[spec-ai-review.yml\nagentic alignment check]
-    I --> K{All checks pass?}
-    J --> K
-    K -- No --> F
-    K -- Yes --> L([Merge])
+flowchart LR
+    A([Open camera]) --> B[Scan label barcode]
+    B --> C{Parse format}
+    C -->|DigiKey 2D| D[Extract PN + Mfr PN + Qty]
+    C -->|Plain barcode| E[Use as part number]
+    D --> F[Review & edit parsed data]
+    E --> F
+    F --> G([Save to inventory])
+    G --> H[Search & browse components]
+    H --> I[Match with DigiKey store]
 ```
 
 ---
 
 ## Quick start
 
-### 1. Configure this repo
-
-Open it in [Claude Code](https://claude.ai/code) — it detects the unconfigured state and interviews you automatically.
-
-Or configure manually:
+### Local development
 
 ```bash
-# Edit the five required fields
-vi .openspec/config.yaml
+# 1. Clone and install dependencies
+git clone https://github.com/arananet/inv2digikey.git
+cd inv2digikey
+pip install -r requirements.txt
 
-# Install git hooks
-bash setup.sh
+# 2. Configure environment
+cp .env.example .env
+# Edit .env: set SECRET_KEY and DATABASE_URL
+
+# 3. Run the app
+uvicorn main:app --reload
+
+# 4. Open http://localhost:8000 — register your first user
 ```
 
-### 2. Set your personal defaults (optional)
-
-Fill in `.openspec/defaults.yaml` once — onboarding will skip questions you've already answered:
-
-```yaml
-owner: "your-github-org"
-team: "your-team"
-test_command: "npm test"
-default_implementation_skill: "frontend-pro"  # or backend-pro, devops-pro, etc.
-```
-
-### 3. Create your first spec
+### Run tests
 
 ```bash
-gh openspec scaffold "my first feature"
-# or in Claude Code:
-/openspec-scaffold my first feature
-```
-
-### 4. Implement with the right domain skill
-
-```bash
-# In Claude Code — reads the spec, invokes implementation_skill if set
-/openspec-implement my-first-feature
-```
-
-### 5. Validate before pushing
-
-```bash
-gh openspec check           # validate all specs
-gh openspec check --strict  # treat warnings as errors
-gh openspec check --pr 42   # check a specific PR
+pytest
 ```
 
 ---
 
-## Claude Code skills
+## Deployment on Railway
 
-Three project skills are available in any Claude Code session:
+1. Create a new Railway project and link this repo
+2. Add a **PostgreSQL** plugin — Railway sets `DATABASE_URL` automatically
+3. Set environment variables:
+   | Variable | Description |
+   |---|---|
+   | `SECRET_KEY` | Random secret for JWT signing (generate with `openssl rand -hex 32`) |
+   | `DATABASE_URL` | Set automatically by Railway PostgreSQL plugin |
+   | `SETUP_TOKEN` | *(optional)* Token required for registering users after the first |
+4. Deploy — Railway auto-detects `Procfile` and starts the app
 
-| Skill | What it does |
-|---|---|
-| `/openspec-scaffold [feature]` | Guided spec creation — reads defaults, scaffolds file, validates required fields |
-| `/openspec-implement [slug]` | Reads spec, checks status, invokes domain skill, implements + writes tests |
-| `/openspec-check` | Validates spec coverage for current staged changes |
+---
+
+## Environment variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `SECRET_KEY` | Yes | JWT signing secret |
+| `SETUP_TOKEN` | No | If set, blocks new user registration unless this token is provided |
+
+---
+
+## Scanning DigiKey labels
+
+DigiKey bag labels include a **2D Data Matrix** barcode that encodes structured data:
+
+- `K` prefix — DigiKey part number (e.g. `RHM33.0AFCT-ND`)
+- `1P` prefix — Manufacturer part number (e.g. `ESR18EZPF33R0`)
+- `30P` prefix — Quantity
+- `4L` prefix — Manufacturer name
+
+The app parses this automatically. You can also scan regular Code 128 / EAN barcodes and enter additional fields manually.
 
 ---
 
 ## Project structure
 
 ```
-.openspec/
-├── config.yaml              # Project configuration and enforcement settings
-├── defaults.yaml            # Personal/team defaults (fill in once)
-├── onboarding.yaml          # Questions Claude Code asks during first-time setup
-├── specs/                   # Active spec files (one per feature/bugfix)
-│   └── example-feature.spec.yaml
-└── templates/
-    ├── feature.spec.yaml    # Includes optional eval_plan for AI-backed features
-    └── bugfix.spec.yaml
-
-.harness/                    # Eval harness — proves specs under controlled conditions
-├── scenarios/               # Declarative eval scenarios (agent tasks, prompt runs)
-│   └── example.scenario.yaml
-├── evaluators/              # Rubrics and scripts that score scenario runs
-├── mocks/                   # Mock tools, APIs, and data sources
-└── traces/                  # Captured execution traces (gitignored by default)
-
-.github/
-├── workflows/
-│   ├── spec-check.yml           # Deterministic CI gate + test runner
-│   ├── spec-ai-review.yml       # Agentic semantic review
-│   ├── spec-bootstrap.yml       # First-push setup reminder
-│   ├── repo-init.yml            # Creates `main` branch on new repos from template
-│   ├── codeql.yml               # Static analysis (SAST)
-│   ├── secret-scan.yml          # Gitleaks secret scanning
-│   ├── dependency-review.yml    # Vulnerable / disallowed-license deps
-│   ├── sbom.yml                 # CycloneDX SBOM on release
-│   ├── labeler.yml              # Path-based PR labels
-│   ├── release-drafter.yml      # Auto-drafted release notes
-│   └── stale.yml                # Stale issue/PR bot
-├── ISSUE_TEMPLATE/
-│   ├── bug_report.yml
-│   ├── feature_request.yml
-│   ├── spec_question.yml
-│   └── config.yml
-├── agents/
-│   └── spec-review.md           # AI agent goal file
-├── CODEOWNERS                   # Ownership matrix
-├── FUNDING.yml                  # Sponsor links
-├── AGENTS.md                    # Instructions for AI agents
-├── copilot-instructions.md      # GitHub Copilot instructions
-├── dependabot.yml               # Weekly dependency updates
-├── labeler.yml                  # Rules for path-based labelling
-├── pull_request_template.md     # Structured PR template
-└── release-drafter.yml          # Release-notes grouping config
-
-.claude/
-├── commands/
-│   ├── openspec-scaffold.md
-│   ├── openspec-implement.md
-│   └── openspec-check.md
-├── hooks/
-│   └── require-spec-on-commit.sh
-└── settings.json
-
-docs/
-├── adr/                         # Architecture Decision Records
-│   └── 0001-record-architecture-decisions.md
-└── BRANCH_PROTECTION.md         # Recommended ruleset configuration
-
-Governance (repo root):
-├── SECURITY.md                  # Vulnerability disclosure policy
-├── CONTRIBUTING.md              # Contribution guide (spec-first)
-├── CODE_OF_CONDUCT.md           # Contributor Covenant v2.1
-├── SUPPORT.md                   # Support channels
-├── CHANGELOG.md                 # Keep-a-Changelog
-├── .gitignore                   # Multi-language defaults
-├── .gitattributes               # Line endings + linguist hints
-├── .editorconfig                # Editor formatting rules
-├── .pre-commit-config.yaml      # Optional pre-commit hooks
-└── .yamllint                    # YAML lint rules
+inv2digikey/
+├── main.py          # FastAPI app — all routes
+├── models.py        # SQLAlchemy database models
+├── database.py      # Database connection & session
+├── auth.py          # JWT authentication helpers
+├── schemas.py       # Pydantic request/response schemas
+├── requirements.txt
+├── Procfile         # Railway / Heroku start command
+├── railway.json     # Railway deployment config
+├── .env.example     # Environment variable template
+├── static/
+│   └── index.html   # Single-page application (vanilla JS + Tailwind)
+└── tests/
+    └── test_api.py  # Pytest API tests
 ```
 
-## Governance
-
-| File | Purpose |
-|---|---|
-| [SECURITY.md](SECURITY.md) | Report a vulnerability privately |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute — spec-first |
-| [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Contributor Covenant v2.1 |
-| [SUPPORT.md](SUPPORT.md) | Where to get help |
-| [CHANGELOG.md](CHANGELOG.md) | Release history |
-| [.github/CODEOWNERS](.github/CODEOWNERS) | Ownership matrix |
-| [docs/BRANCH_PROTECTION.md](docs/BRANCH_PROTECTION.md) | Recommended GitHub rulesets |
-
 ---
 
-## Spec file format
+## OpenSpec
 
-See `.openspec/specs/example-feature.spec.yaml` for a fully filled-in reference.
+Every feature in this repo is spec-driven. See `.openspec/specs/` for active specs.
 
-Required fields: `title`, `description`, `acceptance_criteria`, `test_plan`, `status`
-
-Status lifecycle: `draft` → `review` → `approved`
-
-> Code can only be written when status is `review` or `approved`.
-
----
-
-## OpenSpec vs Harness
-
-OpenSpec defines **what should be true.**
-Tests and harnesses prove **whether it is true.**
-
-For normal software, this means unit, integration, and end-to-end tests — captured in each spec's `test_plan`.
-
-For AI systems, verification often requires more:
-
-| Concern | Tool |
-|---|---|
-| Functional correctness | Unit / integration tests (`test_plan`) |
-| Agent task success | Eval scenarios (`.harness/scenarios/`) |
-| Grounding and citation accuracy | Evaluators (`.harness/evaluators/`) |
-| Tool use correctness | Mocked tool runs (`.harness/mocks/`) |
-| Latency and cost budgets | Scenario `thresholds` + `metrics` |
-| Safety and refusal behavior | Scenario `expected` + evaluator rubrics |
-| Reproducible regression baselines | Captured traces (`.harness/traces/`) |
-
-When a spec involves an AI-backed component, add an `eval_plan` block — it links the spec to the harness scenarios that prove it:
-
-```yaml
-eval_plan:
-  scenarios:
-    - ".harness/scenarios/my-agent-task.scenario.yaml"
-  metrics:
-    - task_success
-    - groundedness
-    - tool_accuracy
-    - refusal_accuracy
+```bash
+# Install git hooks that enforce spec coverage on commit
+bash setup.sh
 ```
 
-The spec says *what* must be validated. The harness says *how* that validation is executed.
-
 ---
 
-## Coding Guidelines
-
-This project follows the [Karpathy-Inspired Coding Guidelines](https://github.com/forrestchang/andrej-karpathy-skills) — four principles derived from [Andrej Karpathy's observations](https://x.com/karpathy/status/2015883857489522876) on common LLM coding pitfalls:
-
-| Principle | What it addresses |
-|---|---|
-| **Think Before Coding** | Wrong assumptions, hidden confusion, missing tradeoffs |
-| **Simplicity First** | Overcomplication, bloated abstractions |
-| **Surgical Changes** | Orthogonal edits, touching code you shouldn't |
-| **Goal-Driven Execution** | Leverage through tests-first, verifiable success criteria |
-
-These guidelines are integrated into [`CLAUDE.md`](CLAUDE.md) and work alongside OpenSpec — Principle 4 (Goal-Driven Execution) is structurally enforced through spec `acceptance_criteria` and `test_plan` fields.
-
----
-
-**Developer:** Eduardo Arana
-
+**Developer:** Eduardo Arana  
 **License:** [MIT](LICENSE)
 
 ---

@@ -1,4 +1,4 @@
-# Copilot Instructions — {{PROJECT_NAME}}
+# Copilot Instructions — inv2digikey
 
 This project uses **OpenSpec** for spec-driven development.
 

@@ -1,6 +1,6 @@
 # Support
 
-Thanks for using `{{PROJECT_NAME}}`. Here's where to go for help.
+Thanks for using `inv2digikey`. Here's where to go for help.
 
 ## Quick Triage
 
@@ -37,7 +37,7 @@ This project is maintained on a best-effort basis. Typical response windows:
 ## Commercial Support
 
 Not currently offered. For project-specific consulting, contact
-`{{SECURITY_CONTACT}}`.
+`security@example.com`.
 
 ## Funding
 

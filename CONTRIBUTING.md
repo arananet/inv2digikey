@@ -1,4 +1,4 @@
-# Contributing to {{PROJECT_NAME}}
+# Contributing to inv2digikey
 
 Thanks for taking the time to contribute! This project is built on
 **[OpenSpec](.openspec/)** — a spec-driven development workflow that keeps
@@ -39,8 +39,8 @@ flowchart LR
 ### 1. Fork and clone
 
 ```bash
-git clone https://github.com/{{GITHUB_OWNER}}/{{PROJECT_NAME}}.git
-cd {{PROJECT_NAME}}
+git clone https://github.com/arananet/inv2digikey.git
+cd inv2digikey
 bash setup.sh  # installs the OpenSpec git hooks locally
 ```
 
