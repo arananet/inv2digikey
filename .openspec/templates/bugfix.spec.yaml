@@ -1,0 +1,44 @@
+# Bugfix Spec — created by gh openspec scaffold --type bugfix
+# Fill in all sections before moving status to 'review'.
+
+title: "{{FEATURE_NAME}}"
+slug: "{{SLUG}}"
+type: bugfix
+status: {{STATUS}}   # draft | review | approved
+
+author: "{{AUTHOR}}"
+created_at: "{{DATE}}"
+updated_at: "{{DATE}}"
+
+description: |
+  <!-- Describe the bug: what IS happening vs what SHOULD happen. -->
+
+root_cause: |
+  <!-- If known: what caused the bug. Leave as "under investigation" if unknown. -->
+
+reproduction_steps:
+  - "<!-- Step 1 -->"
+  - "<!-- Step 2 -->"
+  - "<!-- Step 3 — observed result -->"
+
+acceptance_criteria:
+  - "<!-- The bug is fixed when: ... -->"
+  - "<!-- Edge case: ... -->"
+
+test_plan:
+  - "<!-- Regression test: <what test was added to prevent recurrence> -->"
+  - "<!-- Unit test (if applicable): <any new unit coverage added> -->"
+
+implementation_skill: null
+  # Optional: domain skill to invoke during implementation.
+  # Examples: "frontend-pro", "backend-pro", "devops-pro"
+
+regression_test: |
+  <!-- Reference the specific test file/function added to cover this bug.
+       Format: path/to/test_file.ext — test_function_name -->
+
+linked_issues: []
+  # - "https://github.com/{{GITHUB_OWNER}}/{{PROJECT_NAME}}/issues/1"
+
+linked_prs: []
+  # - "https://github.com/{{GITHUB_OWNER}}/{{PROJECT_NAME}}/pull/1"

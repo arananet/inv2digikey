@@ -1,0 +1,66 @@
+name: OpenSpec AI Review
+
+# Agentic workflow — semantic spec alignment check on every PR.
+# Complements (does not replace) the deterministic spec-check.yml.
+#
+# Requires: GitHub Agentic Workflows (github/agentic-workflow@v1)
+# Docs: https://github.github.com/gh-aw/
+#
+# The agent reads the spec + code diff and reports whether the implementation
+# satisfies the acceptance criteria and test_plan items in the spec.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions: read-all
+
+concurrency:
+  group: spec-ai-review-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ai-spec-review:
+    name: AI Spec Alignment Review
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+      models: read          # required for GitHub Models / AI access
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Check for spec changes in PR
+        id: has-spec
+        run: |
+          BASE="${{ github.base_ref }}"
+          SPECS=$(git diff --name-only "origin/${BASE}...HEAD" | grep '\.spec\.yaml$' || true)
+          if [ -z "$SPECS" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "No spec changes in this PR — skipping AI review."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "Spec changes found — running AI review."
+          fi
+
+      # GitHub Agentic Workflow step — goal-based, runs only when specs are changed.
+      # The agent reads the goal file, fetches PR context, and posts a review comment.
+      - name: Run AI spec alignment review
+        if: steps.has-spec.outputs.skip == 'false'
+        uses: github/agentic-workflow@v1
+        with:
+          goal-file: .github/agents/spec-review.md
+          model: openai/gpt-4o-mini
+          context: |
+            pull_request: ${{ github.event.pull_request.number }}
+            base_ref: ${{ github.base_ref }}
+            head_sha: ${{ github.sha }}
+          output: pr-comment
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
