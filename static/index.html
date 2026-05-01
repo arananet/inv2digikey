@@ -5,48 +5,45 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>inv2digikey</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <style>
     * { -webkit-tap-highlight-color: transparent; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-    #reader { width: 100% !important; }
-    #reader video { width: 100% !important; border-radius: 0.5rem; }
-    #reader img { display: none; }
     .fade-in { animation: fadeIn 0.2s ease; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
     .card { transition: box-shadow 0.15s; }
     .card:active { box-shadow: 0 0 0 2px #2563eb; }
     input:focus, textarea:focus { outline: none; box-shadow: 0 0 0 2px #2563eb; }
+    #scanner-video { width: 100%; display: block; border-radius: 0.75rem; }
   </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
 
 <div id="app"></div>
 
-<script>
+<script type="module">
+// ── ZXing WASM (C++ port — reliable Data Matrix support) ──────────────────────
+import { readBarcodes } from 'https://esm.sh/@sec-ant/zxing-wasm@1/full';
+
 // ── State ─────────────────────────────────────────────────────────────────────
 const S = {
   token: localStorage.getItem('inv_token') || '',
-  view: 'inventory',    // login | register | inventory | scan | form | detail
+  view: 'inventory',
   components: [],
   search: '',
-  current: null,        // component being viewed/edited
-  scanned: null,        // parsed barcode data waiting to be saved
-  scanner: null,
+  current: null,
+  scanned: null,
   scannerRunning: false,
+  scannerStream: null,
+  scannerTimer: null,
   hasUsers: false,
 };
 
 // ── API ───────────────────────────────────────────────────────────────────────
 async function api(method, path, body) {
-  const opts = {
-    method,
-    headers: { 'Content-Type': 'application/json' },
-  };
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (S.token) opts.headers['Authorization'] = `Bearer ${S.token}`;
   if (body !== undefined) {
     if (method === 'POST' && path === '/api/auth/login') {
-      // OAuth2 form encoding for login
       opts.headers['Content-Type'] = 'application/x-www-form-urlencoded';
       opts.body = `username=${encodeURIComponent(body.username)}&password=${encodeURIComponent(body.password)}`;
     } else {
@@ -65,31 +62,17 @@ function parseBarcode(raw) {
   const GS  = String.fromCharCode(29);
   const RS  = String.fromCharCode(30);
   const EOT = String.fromCharCode(4);
-
   const strip = s => s.replace(new RegExp(EOT, 'g'), '').trim();
 
-  const result = {
-    digikey_pn: '',
-    manufacturer_pn: '',
-    manufacturer: '',
-    description: '',
-    quantity: 0,
-    raw_barcode: raw,
-  };
-
+  const result = { digikey_pn: '', manufacturer_pn: '', manufacturer: '', description: '', quantity: 0, raw_barcode: raw };
   const isDigiKey = raw.includes('[)>') || raw.includes(GS) || raw.includes(RS);
 
   if (isDigiKey) {
-    // Normalise: replace RS and newlines with GS so we can split once
-    const norm = raw
-      .replace(new RegExp(RS, 'g'), GS)
-      .replace(/\r?\n/g, GS);
-
+    const norm = raw.replace(new RegExp(RS, 'g'), GS).replace(/\r?\n/g, GS);
     norm.split(GS).forEach(field => {
       const f = strip(field);
       if (!f || f === '[)>' || f === '06' || f === '>') return;
-
-      if      (f.startsWith('30P')) result.quantity       = parseInt(f.slice(3))  || 0;
+      if      (f.startsWith('30P')) result.quantity        = parseInt(f.slice(3))  || 0;
       else if (f.startsWith('1P'))  result.manufacturer_pn = f.slice(2);
       else if (f.startsWith('1V'))  result.manufacturer    = f.slice(2);
       else if (f.startsWith('4L'))  { if (!result.manufacturer) result.manufacturer = f.slice(2); }
@@ -97,40 +80,24 @@ function parseBarcode(raw) {
       else if (f.startsWith('P'))   { if (!result.digikey_pn) result.digikey_pn = f.slice(1); }
     });
   } else {
-    // Plain barcode — use as DigiKey PN
     result.digikey_pn = raw.trim();
   }
-
   return result;
 }
 
-// ── Render helpers ────────────────────────────────────────────────────────────
-function h(tag, attrs, ...children) {
-  const el = document.createElement(tag);
-  if (attrs) Object.entries(attrs).forEach(([k, v]) => {
-    if (k === 'className') el.className = v;
-    else if (k.startsWith('on')) el[k] = v;
-    else el.setAttribute(k, v);
-  });
-  children.flat().forEach(c => {
-    if (c == null) return;
-    el.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
-  });
-  return el;
-}
-
-function setHTML(html) {
-  document.getElementById('app').innerHTML = html;
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function setHTML(html) { document.getElementById('app').innerHTML = html; }
+function escapeHtml(str) {
+  return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 // ── Views ─────────────────────────────────────────────────────────────────────
-
 function renderAuth(isRegister) {
   const title   = isRegister ? 'Create account' : 'Sign in';
   const btnText = isRegister ? 'Register' : 'Sign in';
   const toggle  = isRegister
     ? `<p class="text-center text-sm text-gray-500 mt-4">Already have an account? <a href="#" id="toggle-auth" class="text-blue-600 font-medium">Sign in</a></p>`
-    : (S.hasUsers ? '' : `<p class="text-center text-sm text-gray-500 mt-4">No account yet? <a href="#" id="toggle-auth" class="text-blue-600 font-medium">Register</a></p>`);
+    : (!S.hasUsers ? `<p class="text-center text-sm text-gray-500 mt-4">No account yet? <a href="#" id="toggle-auth" class="text-blue-600 font-medium">Register</a></p>` : '');
 
   setHTML(`
     <div class="min-h-screen flex flex-col items-center justify-center px-4 bg-gradient-to-b from-blue-600 to-blue-800">
@@ -154,8 +121,7 @@ function renderAuth(isRegister) {
               <input id="password" type="password" autocomplete="${isRegister ? 'new-password' : 'current-password'}"
                 class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 bg-white" required>
             </div>
-            <button type="submit"
-              class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg transition-colors">
+            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg transition-colors">
               ${btnText}
             </button>
           </form>
@@ -172,11 +138,7 @@ function renderAuth(isRegister) {
     const username = document.getElementById('username').value.trim();
     const password = document.getElementById('password').value;
     try {
-      const path = isRegister ? '/api/auth/register' : '/api/auth/login';
-      const body = isRegister
-        ? { username, password }
-        : { username, password };
-      const data = await api('POST', path, body);
+      const data = await api('POST', isRegister ? '/api/auth/register' : '/api/auth/login', { username, password });
       S.token = data.access_token;
       localStorage.setItem('inv_token', S.token);
       S.view = 'inventory';
@@ -199,15 +161,14 @@ function renderInventory() {
   const filtered = S.components.filter(c => {
     if (!S.search) return true;
     const q = S.search.toLowerCase();
-    return (c.digikey_pn || '').toLowerCase().includes(q)
-      || (c.manufacturer_pn || '').toLowerCase().includes(q)
-      || (c.description || '').toLowerCase().includes(q)
-      || (c.manufacturer || '').toLowerCase().includes(q);
+    return (c.digikey_pn||'').toLowerCase().includes(q)
+      || (c.manufacturer_pn||'').toLowerCase().includes(q)
+      || (c.description||'').toLowerCase().includes(q)
+      || (c.manufacturer||'').toLowerCase().includes(q);
   });
 
   setHTML(`
     <div class="min-h-screen flex flex-col">
-      <!-- Header -->
       <header class="bg-blue-600 text-white px-4 pt-safe pb-3 shadow-md sticky top-0 z-10">
         <div class="flex items-center justify-between mb-2">
           <h1 class="text-lg font-bold">📦 inv2digikey</h1>
@@ -216,12 +177,10 @@ function renderInventory() {
             <button id="btn-logout" class="text-blue-200 hover:text-white text-sm">Logout</button>
           </div>
         </div>
-        <input id="search-input" type="search" placeholder="Search parts…"
-          value="${escapeHtml(S.search)}"
+        <input id="search-input" type="search" placeholder="Search parts…" value="${escapeHtml(S.search)}"
           class="w-full bg-blue-500 placeholder-blue-300 text-white border border-blue-400 rounded-lg px-3 py-2 text-sm">
       </header>
 
-      <!-- Component list -->
       <main class="flex-1 overflow-y-auto px-3 py-3 pb-24 space-y-2 fade-in">
         ${filtered.length === 0 ? `
           <div class="text-center text-gray-400 mt-16">
@@ -229,19 +188,15 @@ function renderInventory() {
             <p class="font-medium">${S.search ? 'No results found' : 'No components yet'}</p>
             <p class="text-sm mt-1">${S.search ? 'Try a different search' : 'Tap Scan or + to add your first part'}</p>
           </div>
-        ` : filtered.map(c => componentCard(c)).join('')}
+        ` : filtered.map(componentCard).join('')}
       </main>
 
-      <!-- Bottom nav -->
       <nav class="fixed bottom-0 inset-x-0 bg-white border-t border-gray-200 flex items-center justify-around px-2 pb-safe z-20" style="height:64px">
         <button id="btn-nav-list" class="flex flex-col items-center gap-0.5 text-blue-600 font-medium text-xs py-2 px-4">
           <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
           Inventory
         </button>
-        <button id="btn-nav-scan"
-          class="bg-blue-600 text-white rounded-full w-14 h-14 flex items-center justify-center shadow-lg -mt-6 text-2xl">
-          📷
-        </button>
+        <button id="btn-nav-scan" class="bg-blue-600 text-white rounded-full w-14 h-14 flex items-center justify-center shadow-lg -mt-6 text-2xl">📷</button>
         <button id="btn-nav-add" class="flex flex-col items-center gap-0.5 text-gray-500 text-xs py-2 px-4">
           <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
           Add
@@ -250,18 +205,10 @@ function renderInventory() {
     </div>
   `);
 
-  document.getElementById('search-input').oninput = e => {
-    S.search = e.target.value;
-    renderInventory();
-  };
-  document.getElementById('btn-logout').onclick = () => {
-    S.token = '';
-    localStorage.removeItem('inv_token');
-    S.view = 'login';
-    render();
-  };
+  document.getElementById('search-input').oninput = e => { S.search = e.target.value; renderInventory(); };
+  document.getElementById('btn-logout').onclick = () => { S.token = ''; localStorage.removeItem('inv_token'); S.view = 'login'; render(); };
   document.getElementById('btn-nav-scan').onclick = () => { S.view = 'scan'; render(); };
-  document.getElementById('btn-nav-add').onclick = () => { S.current = null; S.view = 'form'; render(); };
+  document.getElementById('btn-nav-add').onclick  = () => { S.current = null; S.view = 'form'; render(); };
   document.getElementById('btn-nav-list').onclick = () => { S.view = 'inventory'; render(); };
 
   document.querySelectorAll('.component-card').forEach(el => {
@@ -299,6 +246,7 @@ function componentCard(c) {
   `;
 }
 
+// ── Scanner view ──────────────────────────────────────────────────────────────
 function renderScanner() {
   setHTML(`
     <div class="min-h-screen flex flex-col bg-gray-900">
@@ -307,13 +255,23 @@ function renderScanner() {
         <h2 class="text-white font-semibold text-lg flex-1">Scan barcode / QR</h2>
       </header>
 
-      <div class="px-4">
-        <div id="reader" class="rounded-xl overflow-hidden"></div>
+      <div class="px-4 relative">
+        <div id="reader" class="relative rounded-xl overflow-hidden bg-black" style="min-height:280px">
+          <!-- video inserted by startScanner() -->
+          <div id="scan-corners" class="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div class="relative" style="width:260px;height:260px">
+              <div class="absolute top-0 left-0 w-10 h-10 border-t-4 border-l-4 border-white opacity-80 rounded-tl-lg"></div>
+              <div class="absolute top-0 right-0 w-10 h-10 border-t-4 border-r-4 border-white opacity-80 rounded-tr-lg"></div>
+              <div class="absolute bottom-0 left-0 w-10 h-10 border-b-4 border-l-4 border-white opacity-80 rounded-bl-lg"></div>
+              <div class="absolute bottom-0 right-0 w-10 h-10 border-b-4 border-r-4 border-white opacity-80 rounded-br-lg"></div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="px-4 py-3 text-center">
         <p class="text-gray-400 text-sm">Point your camera at a barcode or QR code</p>
-        <p class="text-gray-500 text-xs mt-1">DigiKey 2D labels, Code 128, QR codes supported</p>
+        <p class="text-gray-500 text-xs mt-1">DigiKey Data Matrix, QR codes, Code 128 supported</p>
       </div>
 
       <div id="scan-result" class="hidden mx-4 bg-white rounded-xl p-4 fade-in">
@@ -330,62 +288,83 @@ function renderScanner() {
     </div>
   `);
 
-  document.getElementById('btn-back').onclick = () => stopScanner(() => { S.view = 'inventory'; render(); });
-
+  document.getElementById('btn-back').onclick = () => { stopScanner(); S.view = 'inventory'; render(); };
   startScanner();
 }
 
-function startScanner() {
+// ── Scanner engine (ZXing WASM via manual camera loop) ────────────────────────
+async function startScanner() {
   if (S.scannerRunning) return;
 
-  // Explicitly request Data Matrix + common 1D/2D formats so ZXing enables them all
-  const formats = [
-    Html5QrcodeSupportedFormats.DATA_MATRIX,
-    Html5QrcodeSupportedFormats.QR_CODE,
-    Html5QrcodeSupportedFormats.CODE_128,
-    Html5QrcodeSupportedFormats.CODE_39,
-    Html5QrcodeSupportedFormats.EAN_13,
-    Html5QrcodeSupportedFormats.EAN_8,
-    Html5QrcodeSupportedFormats.UPC_A,
-    Html5QrcodeSupportedFormats.UPC_E,
-  ];
+  const readerEl = document.getElementById('reader');
+  if (!readerEl) return;
 
-  S.scanner = new Html5Qrcode('reader', { formatsToSupport: formats });
-  S.scannerRunning = true;
+  const video = document.createElement('video');
+  video.id = 'scanner-video';
+  video.setAttribute('autoplay', '');
+  video.setAttribute('playsinline', '');
+  video.setAttribute('muted', '');
+  readerEl.insertBefore(video, readerEl.firstChild);
 
-  S.scanner.start(
-    { facingMode: 'environment' },
-    { fps: 15, qrbox: { width: 280, height: 280 }, aspectRatio: 1.0 },
-    onScanSuccess,
-    () => {}
-  ).catch(err => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+    });
+    video.srcObject = stream;
+    S.scannerStream = stream;
+    await video.play();
+    S.scannerRunning = true;
+    scheduleFrame(video);
+  } catch (err) {
     console.error('Camera error:', err);
-    const reader = document.getElementById('reader');
-    if (reader) reader.innerHTML = `<p class="text-red-400 text-center py-8 text-sm">Camera error: ${err}.<br>Make sure you allow camera access.</p>`;
-    S.scannerRunning = false;
-  });
+    readerEl.innerHTML = `<p class="text-red-400 text-center py-10 text-sm px-4">Camera error: ${err.message}.<br>Allow camera access and try again.</p>`;
+  }
 }
 
-function stopScanner(cb) {
-  if (S.scanner && S.scannerRunning) {
-    S.scanner.stop().then(() => {
-      S.scannerRunning = false;
-      S.scanner = null;
-      if (cb) cb();
-    }).catch(() => {
-      S.scannerRunning = false;
-      S.scanner = null;
-      if (cb) cb();
+function scheduleFrame(video) {
+  if (!S.scannerRunning) return;
+  S.scannerTimer = setTimeout(() => decodeFrame(video), 150);
+}
+
+async function decodeFrame(video) {
+  if (!S.scannerRunning) return;
+  if (video.readyState < video.HAVE_ENOUGH_DATA) { scheduleFrame(video); return; }
+
+  // Capture frame to offscreen canvas
+  const canvas = new OffscreenCanvas(video.videoWidth, video.videoHeight);
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  const imageData = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+
+  try {
+    const results = await readBarcodes(imageData, {
+      formats: ['DataMatrix', 'QRCode', 'Code128', 'Code39', 'EAN-13', 'EAN-8', 'UPC-A', 'PDF417'],
+      tryHarder: true,
+      tryRotate: true,
+      tryInvert: true,
     });
-  } else {
-    if (cb) cb();
+    if (results.length > 0 && S.scannerRunning) {
+      onScanSuccess(results[0].text);
+      return;
+    }
+  } catch (_) { /* ignore decode errors, keep scanning */ }
+
+  scheduleFrame(video);
+}
+
+function stopScanner() {
+  S.scannerRunning = false;
+  clearTimeout(S.scannerTimer);
+  S.scannerTimer = null;
+  if (S.scannerStream) {
+    S.scannerStream.getTracks().forEach(t => t.stop());
+    S.scannerStream = null;
   }
 }
 
 function onScanSuccess(decodedText) {
-  if (!S.scannerRunning) return;
-  // Pause scanner
-  S.scanner.pause(true);
+  // Pause scanning while user reviews result
+  S.scannerRunning = false;
+  clearTimeout(S.scannerTimer);
 
   const parsed = parseBarcode(decodedText);
   S.scanned = parsed;
@@ -395,15 +374,15 @@ function onScanSuccess(decodedText) {
   if (!resultEl || !fieldsEl) return;
 
   const rows = [
-    ['DigiKey PN', parsed.digikey_pn],
-    ['Mfr PN',    parsed.manufacturer_pn],
+    ['DigiKey PN',   parsed.digikey_pn],
+    ['Mfr PN',       parsed.manufacturer_pn],
     ['Manufacturer', parsed.manufacturer],
     ['Description',  parsed.description],
     ['Qty',          parsed.quantity || ''],
   ].filter(([, v]) => v);
 
-  fieldsEl.innerHTML = rows.map(([label, val]) =>
-    `<div class="flex gap-2"><span class="text-gray-500 w-24 shrink-0">${label}:</span><span class="font-medium text-gray-900 break-all">${escapeHtml(String(val))}</span></div>`
+  fieldsEl.innerHTML = rows.map(([label, v]) =>
+    `<div class="flex gap-2"><span class="text-gray-500 w-24 shrink-0">${label}:</span><span class="font-medium text-gray-900 break-all">${escapeHtml(String(v))}</span></div>`
   ).join('');
 
   resultEl.classList.remove('hidden');
@@ -412,70 +391,65 @@ function onScanSuccess(decodedText) {
     try {
       await api('POST', '/api/components', S.scanned);
       await loadComponents();
-      stopScanner(() => { S.view = 'inventory'; render(); });
-    } catch (err) {
-      alert(err.message);
-    }
+      stopScanner();
+      S.view = 'inventory';
+      render();
+    } catch (err) { alert(err.message); }
   };
 
   document.getElementById('btn-scan-edit').onclick = () => {
     S.current = { ...S.scanned, id: null };
-    stopScanner(() => { S.view = 'form'; render(); });
+    stopScanner();
+    S.view = 'form';
+    render();
   };
 
   document.getElementById('btn-scan-retry').onclick = () => {
     resultEl.classList.add('hidden');
-    S.scanner.resume();
+    // Resume scanning on the existing video element
+    const video = document.getElementById('scanner-video');
+    if (video) { S.scannerRunning = true; scheduleFrame(video); }
   };
 }
 
+// ── Form views ────────────────────────────────────────────────────────────────
 function renderForm(component) {
   const isEdit = component && component.id;
-  const title  = isEdit ? 'Edit component' : 'Add component';
   const c = component || {};
 
   setHTML(`
     <div class="min-h-screen flex flex-col">
       <header class="bg-blue-600 text-white px-4 py-3 flex items-center sticky top-0 z-10">
         <button id="btn-back" class="mr-3 text-xl">←</button>
-        <h2 class="font-semibold text-lg flex-1">${title}</h2>
+        <h2 class="font-semibold text-lg flex-1">${isEdit ? 'Edit component' : 'Add component'}</h2>
         ${isEdit ? `<button id="btn-delete" class="text-red-200 text-sm">Delete</button>` : ''}
       </header>
 
       <form id="component-form" class="flex-1 overflow-y-auto px-4 py-4 pb-24 space-y-4 fade-in">
-        ${formField('digikey_pn',     'DigiKey Part Number', c.digikey_pn, 'text', 'e.g. RHM33.0AFCT-ND')}
-        ${formField('manufacturer_pn','Manufacturer Part Number', c.manufacturer_pn, 'text', 'e.g. ESR18EZPF33R0')}
-        ${formField('manufacturer',   'Manufacturer', c.manufacturer, 'text', 'e.g. ROHM Semiconductor')}
-        ${formField('description',    'Description', c.description, 'text', 'e.g. RES SMD 33 OHM 1% 1206')}
-        ${formField('quantity',       'Quantity', c.quantity ?? 0, 'number', '0')}
-        ${formField('location',       'Location / Bin', c.location, 'text', 'e.g. Drawer A3')}
+        ${formField('digikey_pn',     'DigiKey Part Number',     c.digikey_pn,     'text',   'e.g. RHM33.0AFCT-ND')}
+        ${formField('manufacturer_pn','Manufacturer Part Number', c.manufacturer_pn,'text',   'e.g. ESR18EZPF33R0')}
+        ${formField('manufacturer',   'Manufacturer',             c.manufacturer,   'text',   'e.g. ROHM Semiconductor')}
+        ${formField('description',    'Description',              c.description,    'text',   'e.g. RES SMD 33 OHM 1% 1206')}
+        ${formField('quantity',       'Quantity',                 c.quantity ?? 0,  'number', '0')}
+        ${formField('location',       'Location / Bin',           c.location,       'text',   'e.g. Drawer A3')}
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
           <textarea id="field-notes" rows="3" placeholder="Optional notes"
             class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 bg-white text-sm">${escapeHtml(c.notes || '')}</textarea>
         </div>
-
-        <button type="submit"
-          class="w-full bg-blue-600 text-white font-semibold py-3 rounded-xl text-base shadow-sm">
+        <button type="submit" class="w-full bg-blue-600 text-white font-semibold py-3 rounded-xl text-base shadow-sm">
           ${isEdit ? 'Save changes' : 'Add to inventory'}
         </button>
       </form>
     </div>
   `);
 
-  document.getElementById('btn-back').onclick = () => {
-    S.view = isEdit ? 'detail' : 'inventory';
-    render();
-  };
+  document.getElementById('btn-back').onclick = () => { S.view = isEdit ? 'detail' : 'inventory'; render(); };
 
   document.getElementById('btn-delete')?.addEventListener('click', async () => {
     if (!confirm('Delete this component?')) return;
-    try {
-      await api('DELETE', `/api/components/${component.id}`);
-      await loadComponents();
-      S.view = 'inventory';
-      render();
-    } catch (err) { alert(err.message); }
+    try { await api('DELETE', `/api/components/${component.id}`); await loadComponents(); S.view = 'inventory'; render(); }
+    catch (err) { alert(err.message); }
   });
 
   document.getElementById('component-form').onsubmit = async e => {
@@ -491,11 +465,8 @@ function renderForm(component) {
       raw_barcode:     c.raw_barcode || null,
     };
     try {
-      if (isEdit) {
-        await api('PUT', `/api/components/${component.id}`, payload);
-      } else {
-        await api('POST', '/api/components', payload);
-      }
+      if (isEdit) await api('PUT', `/api/components/${component.id}`, payload);
+      else        await api('POST', '/api/components', payload);
       await loadComponents();
       S.view = 'inventory';
       render();
@@ -507,36 +478,23 @@ function formField(id, label, value, type, placeholder) {
   return `
     <div>
       <label class="block text-sm font-medium text-gray-700 mb-1">${label}</label>
-      <input id="field-${id}" type="${type}" value="${escapeHtml(String(value ?? ''))}"
-        placeholder="${placeholder}"
+      <input id="field-${id}" type="${type}" value="${escapeHtml(String(value ?? ''))}" placeholder="${placeholder}"
         class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 bg-white text-sm">
     </div>
   `;
 }
 
-function val(id) {
-  const el = document.getElementById(`field-${id}`);
-  return el ? el.value.trim() : '';
-}
+function val(id) { const el = document.getElementById(`field-${id}`); return el ? el.value.trim() : ''; }
 
 function renderDetail(c) {
   if (!c) { S.view = 'inventory'; render(); return; }
-
   const qty = c.quantity ?? 0;
   const qtyColor = qty === 0 ? 'bg-red-100 text-red-700' : qty < 5 ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700';
-
   const rows = [
-    ['DigiKey PN',   c.digikey_pn],
-    ['Mfr PN',       c.manufacturer_pn],
-    ['Manufacturer', c.manufacturer],
-    ['Description',  c.description],
-    ['Location',     c.location],
-    ['Notes',        c.notes],
+    ['DigiKey PN', c.digikey_pn], ['Mfr PN', c.manufacturer_pn], ['Manufacturer', c.manufacturer],
+    ['Description', c.description], ['Location', c.location], ['Notes', c.notes],
   ].filter(([, v]) => v);
-
-  const dkUrl = c.digikey_pn
-    ? `https://www.digikey.com/en/products/result?keywords=${encodeURIComponent(c.digikey_pn)}`
-    : null;
+  const dkUrl = c.digikey_pn ? `https://www.digikey.com/en/products/result?keywords=${encodeURIComponent(c.digikey_pn)}` : null;
 
   setHTML(`
     <div class="min-h-screen flex flex-col">
@@ -547,71 +505,50 @@ function renderDetail(c) {
       </header>
 
       <div class="flex-1 overflow-y-auto px-4 py-4 pb-24 space-y-3 fade-in">
-        <!-- Quantity badge -->
         <div class="flex items-center justify-between bg-white rounded-xl p-4 shadow-sm border border-gray-100">
           <span class="text-gray-600 font-medium">Quantity</span>
           <span class="text-3xl font-bold ${qtyColor} rounded-full px-4 py-1">${qty}</span>
         </div>
-
-        <!-- Fields -->
         <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          ${rows.map(([label, val], i) => `
+          ${rows.map(([label, v], i) => `
             <div class="flex gap-3 px-4 py-3 ${i < rows.length - 1 ? 'border-b border-gray-100' : ''}">
               <span class="text-gray-500 text-sm w-28 shrink-0 pt-0.5">${label}</span>
-              <span class="text-gray-900 text-sm font-medium break-all">${escapeHtml(val)}</span>
+              <span class="text-gray-900 text-sm font-medium break-all">${escapeHtml(v)}</span>
             </div>
           `).join('')}
         </div>
-
         ${dkUrl ? `
           <a href="${dkUrl}" target="_blank" rel="noopener"
             class="flex items-center justify-center gap-2 bg-blue-600 text-white rounded-xl py-3 font-semibold shadow-sm">
             🔗 Search on DigiKey
           </a>
         ` : ''}
-
         <p class="text-center text-xs text-gray-400">Added ${new Date(c.created_at).toLocaleDateString()}</p>
       </div>
     </div>
   `);
 
   document.getElementById('btn-back').onclick = () => { S.view = 'inventory'; render(); };
-  document.getElementById('btn-edit').onclick = () => { S.current = c; S.view = 'form'; render(); };
+  document.getElementById('btn-edit').onclick  = () => { S.current = c; S.view = 'form'; render(); };
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function escapeHtml(str) {
-  return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
+// ── Data loading ──────────────────────────────────────────────────────────────
 async function loadComponents() {
   try {
     S.components = await api('GET', `/api/components${S.search ? `?search=${encodeURIComponent(S.search)}` : ''}`);
-  } catch {
-    S.components = [];
-  }
+  } catch { S.components = []; }
 }
 
 async function checkAuthStatus() {
-  try {
-    const data = await api('GET', '/api/auth/status');
-    S.hasUsers = data.has_users;
-  } catch {
-    S.hasUsers = false;
-  }
+  try { const d = await api('GET', '/api/auth/status'); S.hasUsers = d.has_users; }
+  catch { S.hasUsers = false; }
 }
 
 // ── Router ────────────────────────────────────────────────────────────────────
 async function render() {
-  // Stop scanner if leaving scan view
-  if (S.view !== 'scan' && S.scannerRunning) {
-    stopScanner();
-  }
+  if (S.view !== 'scan' && S.scannerRunning) stopScanner();
 
-  if (!S.token) {
-    renderAuth(S.view === 'register' || !S.hasUsers);
-    return;
-  }
+  if (!S.token) { renderAuth(S.view === 'register' || !S.hasUsers); return; }
 
   switch (S.view) {
     case 'inventory': renderInventory(); break;
@@ -623,25 +560,14 @@ async function render() {
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
-(async () => {
-  await checkAuthStatus();
-
-  if (S.token) {
-    try {
-      await loadComponents();
-      S.view = 'inventory';
-    } catch {
-      // Token expired or invalid
-      S.token = '';
-      localStorage.removeItem('inv_token');
-      S.view = S.hasUsers ? 'login' : 'register';
-    }
-  } else {
-    S.view = S.hasUsers ? 'login' : 'register';
-  }
-
-  render();
-})();
+await checkAuthStatus();
+if (S.token) {
+  try { await loadComponents(); S.view = 'inventory'; }
+  catch { S.token = ''; localStorage.removeItem('inv_token'); S.view = S.hasUsers ? 'login' : 'register'; }
+} else {
+  S.view = S.hasUsers ? 'login' : 'register';
+}
+render();
 </script>
 </body>
 </html>
