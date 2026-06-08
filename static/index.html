@@ -14,6 +14,22 @@
     .card:active { box-shadow: 0 0 0 2px #2563eb; }
     input:focus, textarea:focus { outline: none; box-shadow: 0 0 0 2px #2563eb; }
     #scanner-video { width: 100%; display: block; border-radius: 0.75rem; }
+
+    /* ── Dark mode: scoped overrides for the Tailwind utilities used in the UI ── */
+    body.dark { background-color: #0b1220; color: #e2e8f0; }
+    body.dark .bg-gray-50 { background-color: #0b1220 !important; }
+    body.dark .bg-white { background-color: #1e293b !important; }
+    body.dark .bg-gray-100 { background-color: #334155 !important; }
+    body.dark .bg-blue-50 { background-color: #1e3a5f !important; }
+    body.dark .text-gray-900, body.dark .text-gray-800 { color: #f1f5f9 !important; }
+    body.dark .text-gray-700, body.dark .text-gray-600 { color: #cbd5e1 !important; }
+    body.dark .text-gray-500 { color: #94a3b8 !important; }
+    body.dark .text-gray-400 { color: #64748b !important; }
+    body.dark .text-blue-600 { color: #60a5fa !important; }
+    body.dark .border-gray-100, body.dark .border-gray-200, body.dark .border-gray-300 { border-color: #334155 !important; }
+    body.dark input, body.dark textarea, body.dark select {
+      background-color: #1e293b !important; color: #f1f5f9 !important; border-color: #334155 !important;
+    }
   </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
@@ -59,6 +75,8 @@ async function getDetector() {
 // ── State ─────────────────────────────────────────────────────────────────────
 const S = {
   token: localStorage.getItem('inv_token') || '',
+  theme: localStorage.getItem('inv_theme') || 'light',
+  username: localStorage.getItem('inv_username') || '',
   view: 'inventory',
   components: [],
   search: '',
@@ -69,6 +87,16 @@ const S = {
   scannerTimer: null,
   hasUsers: false,
 };
+
+// ── Theme ───────────────────────────────────────────────────────────────────
+function applyTheme() {
+  document.body.classList.toggle('dark', S.theme === 'dark');
+}
+function setTheme(theme) {
+  S.theme = theme;
+  localStorage.setItem('inv_theme', theme);
+  applyTheme();
+}
 
 // ── API ───────────────────────────────────────────────────────────────────────
 async function api(method, path, body) {
@@ -140,6 +168,46 @@ function escapeHtml(str) {
   return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// Consistent, fixed-size back arrow (SVG, not an emoji glyph). Lives in blue headers.
+function backArrowButton() {
+  return `<button id="btn-back" aria-label="Back"
+    class="mr-2 -ml-1 p-2 rounded-lg hover:bg-white/10 active:bg-white/20 flex items-center justify-center shrink-0">
+    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+  </button>`;
+}
+
+// Standard blue page header with a back button. Wire the destination with wireBack().
+function pageHeader(title) {
+  return `
+    <header class="bg-blue-600 text-white px-3 py-3 flex items-center sticky top-0 z-10 shadow-md">
+      ${backArrowButton()}
+      <h2 class="font-semibold text-lg flex-1 truncate">${escapeHtml(title)}</h2>
+    </header>`;
+}
+
+function wireBack(view) {
+  document.getElementById('btn-back').onclick = () => { S.view = view; render(); };
+}
+
+function downloadBlob(filename, content, type) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function logout() {
+  S.token = ''; S.username = '';
+  localStorage.removeItem('inv_token');
+  localStorage.removeItem('inv_username');
+  S.view = 'login';
+  render();
+}
+
 // ── Views ─────────────────────────────────────────────────────────────────────
 function renderAuth(isRegister) {
   const title   = isRegister ? 'Create account' : 'Sign in';
@@ -189,7 +257,9 @@ function renderAuth(isRegister) {
     try {
       const data = await api('POST', isRegister ? '/api/auth/register' : '/api/auth/login', { username, password });
       S.token = data.access_token;
+      S.username = username;
       localStorage.setItem('inv_token', S.token);
+      localStorage.setItem('inv_username', username);
       S.view = 'inventory';
       await loadComponents();
       render();
@@ -223,7 +293,10 @@ function renderInventory() {
           <h1 class="text-lg font-bold">📦 inv2digikey</h1>
           <div class="flex items-center gap-3">
             <span class="text-blue-200 text-sm">${S.components.length} parts</span>
-            <button id="btn-logout" class="text-blue-200 hover:text-white text-sm">Logout</button>
+            <button id="btn-menu" aria-label="Menu" class="p-1.5 -mr-1 rounded-lg hover:bg-white/10 active:bg-white/20">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+            </button>
           </div>
         </div>
         <input id="search-input" type="search" placeholder="Search parts…" value="${escapeHtml(S.search)}"
@@ -255,7 +328,7 @@ function renderInventory() {
   `);
 
   document.getElementById('search-input').oninput = e => { S.search = e.target.value; renderInventory(); };
-  document.getElementById('btn-logout').onclick = () => { S.token = ''; localStorage.removeItem('inv_token'); S.view = 'login'; render(); };
+  document.getElementById('btn-menu').onclick = () => { S.view = 'menu'; render(); };
   document.getElementById('btn-nav-scan').onclick = () => { S.view = 'scan'; render(); };
   document.getElementById('btn-nav-add').onclick  = () => { S.current = null; S.view = 'form'; render(); };
   document.getElementById('btn-nav-list').onclick = () => { S.view = 'inventory'; render(); };
@@ -299,9 +372,9 @@ function componentCard(c) {
 function renderScanner() {
   setHTML(`
     <div class="min-h-screen flex flex-col bg-gray-900">
-      <header class="flex items-center px-4 py-3 bg-gray-900">
-        <button id="btn-back" class="text-white mr-3 text-lg">←</button>
-        <h2 class="text-white font-semibold text-lg flex-1">Scan barcode / QR</h2>
+      <header class="flex items-center px-3 py-3 bg-gray-900 text-white">
+        ${backArrowButton()}
+        <h2 class="font-semibold text-lg flex-1">Scan barcode / QR</h2>
       </header>
 
       <div class="px-4 relative">
@@ -488,10 +561,10 @@ function renderForm(component) {
 
   setHTML(`
     <div class="min-h-screen flex flex-col">
-      <header class="bg-blue-600 text-white px-4 py-3 flex items-center sticky top-0 z-10">
-        <button id="btn-back" class="mr-3 text-xl">←</button>
+      <header class="bg-blue-600 text-white px-3 py-3 flex items-center sticky top-0 z-10 shadow-md">
+        ${backArrowButton()}
         <h2 class="font-semibold text-lg flex-1">${isEdit ? 'Edit component' : 'Add component'}</h2>
-        ${isEdit ? `<button id="btn-delete" class="text-red-200 text-sm">Delete</button>` : ''}
+        ${isEdit ? `<button id="btn-delete" class="text-red-200 text-sm px-2">Delete</button>` : ''}
       </header>
 
       <form id="component-form" class="flex-1 overflow-y-auto px-4 py-4 pb-24 space-y-4 fade-in">
@@ -567,10 +640,10 @@ function renderDetail(c) {
 
   setHTML(`
     <div class="min-h-screen flex flex-col">
-      <header class="bg-blue-600 text-white px-4 py-3 flex items-center sticky top-0 z-10">
-        <button id="btn-back" class="mr-3 text-xl">←</button>
+      <header class="bg-blue-600 text-white px-3 py-3 flex items-center sticky top-0 z-10 shadow-md">
+        ${backArrowButton()}
         <h2 class="font-semibold text-lg flex-1 truncate">${escapeHtml(c.digikey_pn || c.manufacturer_pn || 'Component')}</h2>
-        <button id="btn-edit" class="text-blue-200 text-sm font-medium">Edit</button>
+        <button id="btn-edit" class="text-blue-200 text-sm font-medium px-2">Edit</button>
       </header>
 
       <div class="flex-1 overflow-y-auto px-4 py-4 pb-24 space-y-3 fade-in">
@@ -601,6 +674,247 @@ function renderDetail(c) {
   document.getElementById('btn-edit').onclick  = () => { S.current = c; S.view = 'form'; render(); };
 }
 
+// ── Main menu ───────────────────────────────────────────────────────────────
+function menuRow(id, emoji, label, sub) {
+  return `
+    <button id="${id}" class="w-full flex items-center gap-3 bg-white rounded-xl shadow-sm border border-gray-100 px-4 py-3.5 active:bg-gray-50 text-left">
+      <span class="text-2xl w-8 text-center shrink-0">${emoji}</span>
+      <span class="flex-1 min-w-0">
+        <span class="block font-semibold text-gray-900 text-sm">${label}</span>
+        ${sub ? `<span class="block text-xs text-gray-500">${sub}</span>` : ''}
+      </span>
+      <svg class="w-5 h-5 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+    </button>`;
+}
+
+function renderMenu() {
+  setHTML(`
+    <div class="min-h-screen flex flex-col bg-gray-50">
+      ${pageHeader('Menu')}
+      <div class="flex-1 overflow-y-auto px-3 py-3 space-y-2 fade-in pb-8">
+        <p class="text-xs text-gray-400 px-1 pb-1">Signed in as ${escapeHtml(S.username || '—')}</p>
+        ${menuRow('m-inventory', '📦', 'Inventory', 'Browse and search parts')}
+        ${menuRow('m-scan', '📷', 'Scan barcode', 'Add a part with the camera')}
+        ${menuRow('m-add', '➕', 'Add component', 'Enter a part manually')}
+        ${menuRow('m-csv', '📄', 'Export to CSV', 'Download inventory as a spreadsheet')}
+        ${menuRow('m-backup', '💾', 'Backup & Restore', 'Export or import full inventory')}
+        ${menuRow('m-users', '👥', 'User management', 'Add or remove users')}
+        ${menuRow('m-settings', '⚙️', 'Settings', 'Appearance and preferences')}
+        ${menuRow('m-about', 'ℹ️', 'About', 'Version and developer')}
+        <button id="m-logout" class="w-full flex items-center gap-3 bg-white rounded-xl shadow-sm border border-gray-100 px-4 py-3.5 active:bg-gray-50 text-left mt-2">
+          <span class="text-2xl w-8 text-center shrink-0">🚪</span>
+          <span class="flex-1 font-semibold text-red-600 text-sm">Logout</span>
+        </button>
+      </div>
+    </div>
+  `);
+  wireBack('inventory');
+  const go = (id, view) => { document.getElementById(id).onclick = () => { S.view = view; render(); }; };
+  go('m-inventory', 'inventory');
+  go('m-scan', 'scan');
+  document.getElementById('m-add').onclick = () => { S.current = null; S.view = 'form'; render(); };
+  document.getElementById('m-csv').onclick = exportCsv;
+  go('m-backup', 'backup');
+  go('m-users', 'users');
+  go('m-settings', 'settings');
+  go('m-about', 'about');
+  document.getElementById('m-logout').onclick = logout;
+}
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+function renderSettings() {
+  const dark = S.theme === 'dark';
+  setHTML(`
+    <div class="min-h-screen flex flex-col bg-gray-50">
+      ${pageHeader('Settings')}
+      <div class="flex-1 overflow-y-auto px-3 py-4 space-y-4 fade-in">
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div class="px-4 py-3 border-b border-gray-100"><h3 class="text-sm font-semibold text-gray-700">Appearance</h3></div>
+          <div class="px-4 py-4 flex items-center justify-between">
+            <div>
+              <p class="font-medium text-gray-900 text-sm">Dark mode</p>
+              <p class="text-xs text-gray-500">Switch between light and dark theme</p>
+            </div>
+            <button id="toggle-theme" role="switch" aria-checked="${dark}"
+              class="relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${dark ? 'bg-blue-600' : 'bg-gray-300'}">
+              <span class="inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${dark ? 'translate-x-6' : 'translate-x-1'}"></span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `);
+  wireBack('menu');
+  document.getElementById('toggle-theme').onclick = () => {
+    setTheme(S.theme === 'dark' ? 'light' : 'dark');
+    renderSettings();
+  };
+}
+
+// ── Backup & Restore ───────────────────────────────────────────────────────────
+function renderBackup() {
+  setHTML(`
+    <div class="min-h-screen flex flex-col bg-gray-50">
+      ${pageHeader('Backup & Restore')}
+      <div class="flex-1 overflow-y-auto px-3 py-4 space-y-4 fade-in">
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-3">
+          <h3 class="text-sm font-semibold text-gray-700">Backup</h3>
+          <p class="text-xs text-gray-500">Download a JSON file containing every component in your inventory.</p>
+          <button id="btn-backup" class="w-full bg-blue-600 text-white font-semibold py-2.5 rounded-lg">Download backup (JSON)</button>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-3">
+          <h3 class="text-sm font-semibold text-gray-700">Restore</h3>
+          <p class="text-xs text-gray-500">Import a previously downloaded backup file.</p>
+          <input id="restore-file" type="file" accept="application/json,.json"
+            class="w-full text-sm text-gray-700 border border-gray-300 rounded-lg px-3 py-2 bg-white">
+          <label class="flex items-center gap-2 text-sm text-gray-700">
+            <input type="radio" name="restore-mode" value="merge" checked> Merge — add to current inventory
+          </label>
+          <label class="flex items-center gap-2 text-sm text-gray-700">
+            <input type="radio" name="restore-mode" value="replace"> Replace — delete current, then import
+          </label>
+          <button id="btn-restore" class="w-full border-2 border-blue-600 text-blue-600 font-semibold py-2.5 rounded-lg">Restore from file</button>
+          <p id="restore-msg" class="text-sm hidden"></p>
+        </div>
+      </div>
+    </div>
+  `);
+  wireBack('menu');
+
+  document.getElementById('btn-backup').onclick = async () => {
+    try {
+      const data = await api('GET', '/api/backup');
+      const stamp = new Date().toISOString().slice(0, 10);
+      downloadBlob(`inv2digikey-backup-${stamp}.json`, JSON.stringify(data, null, 2), 'application/json');
+    } catch (err) { alert('Backup failed: ' + err.message); }
+  };
+
+  document.getElementById('btn-restore').onclick = async () => {
+    const fileEl = document.getElementById('restore-file');
+    const msg = document.getElementById('restore-msg');
+    const file = fileEl.files[0];
+    if (!file) { alert('Choose a backup file first.'); return; }
+    const mode = document.querySelector('input[name="restore-mode"]:checked').value;
+    if (mode === 'replace' && !confirm('Replace will delete all current components first. Continue?')) return;
+    try {
+      const doc = JSON.parse(await file.text());
+      const res = await api('POST', `/api/restore?mode=${mode}`, doc);
+      msg.textContent = `Restored ${res.restored} component(s) (${res.mode}).`;
+      msg.className = 'text-sm text-green-600';
+      await loadComponents();
+    } catch (err) {
+      msg.textContent = 'Restore failed: ' + err.message;
+      msg.className = 'text-sm text-red-600';
+    }
+  };
+}
+
+async function exportCsv() {
+  try {
+    const res = await fetch('/api/components/export/csv', { headers: { Authorization: `Bearer ${S.token}` } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    downloadBlob('inventory.csv', await res.text(), 'text/csv');
+  } catch (err) { alert('Export failed: ' + err.message); }
+}
+
+// ── User management ─────────────────────────────────────────────────────────────
+function userRow(u) {
+  const isSelf = u.username === S.username;
+  return `
+    <div class="flex items-center gap-3 px-4 py-3 border-b border-gray-100 last:border-b-0">
+      <span class="text-xl shrink-0">👤</span>
+      <div class="flex-1 min-w-0">
+        <p class="font-medium text-gray-900 text-sm truncate">${escapeHtml(u.username)} ${isSelf ? '<span class="text-xs text-blue-600">(you)</span>' : ''}</p>
+        <p class="text-xs text-gray-400">Added ${new Date(u.created_at).toLocaleDateString()}</p>
+      </div>
+      <button class="btn-pw text-xs text-blue-600 px-2 py-1" data-id="${u.id}" data-name="${escapeHtml(u.username)}">Reset PW</button>
+      ${isSelf ? '' : `<button class="btn-del-user text-xs text-red-600 px-2 py-1" data-id="${u.id}" data-name="${escapeHtml(u.username)}">Delete</button>`}
+    </div>`;
+}
+
+async function renderUsers() {
+  let users = [];
+  try { users = await api('GET', '/api/users'); } catch (_) { users = []; }
+  setHTML(`
+    <div class="min-h-screen flex flex-col bg-gray-50">
+      ${pageHeader('User management')}
+      <div class="flex-1 overflow-y-auto px-3 py-4 space-y-4 fade-in">
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          ${users.map(userRow).join('') || '<p class="px-4 py-4 text-sm text-gray-500">No users.</p>'}
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-3">
+          <h3 class="text-sm font-semibold text-gray-700">Add user</h3>
+          <input id="nu-username" placeholder="Username" autocapitalize="none"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900">
+          <input id="nu-password" type="password" placeholder="Password"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900">
+          <button id="btn-add-user" class="w-full bg-blue-600 text-white font-semibold py-2.5 rounded-lg">Add user</button>
+          <p id="user-msg" class="text-sm hidden"></p>
+        </div>
+      </div>
+    </div>
+  `);
+  wireBack('menu');
+
+  document.getElementById('btn-add-user').onclick = async () => {
+    const username = document.getElementById('nu-username').value.trim();
+    const password = document.getElementById('nu-password').value;
+    const msg = document.getElementById('user-msg');
+    msg.classList.remove('hidden');
+    if (!username || !password) { msg.textContent = 'Username and password required.'; msg.className = 'text-sm text-red-600'; return; }
+    try { await api('POST', '/api/users', { username, password }); renderUsers(); }
+    catch (err) { msg.textContent = err.message; msg.className = 'text-sm text-red-600'; }
+  };
+
+  document.querySelectorAll('.btn-del-user').forEach(b => {
+    b.onclick = async () => {
+      if (!confirm(`Delete user "${b.dataset.name}"? Their inventory will be removed.`)) return;
+      try { await api('DELETE', `/api/users/${b.dataset.id}`); renderUsers(); }
+      catch (err) { alert(err.message); }
+    };
+  });
+
+  document.querySelectorAll('.btn-pw').forEach(b => {
+    b.onclick = async () => {
+      const pw = prompt(`New password for "${b.dataset.name}":`);
+      if (!pw) return;
+      try { await api('PUT', `/api/users/${b.dataset.id}/password`, { password: pw }); alert('Password updated.'); }
+      catch (err) { alert(err.message); }
+    };
+  });
+}
+
+// ── About ─────────────────────────────────────────────────────────────────────
+async function renderAbout() {
+  let info = { name: 'inv2digikey', version: '—', developer: 'Eduardo Arana' };
+  try { info = await api('GET', '/api/about'); } catch (_) { /* show fallback */ }
+  setHTML(`
+    <div class="min-h-screen flex flex-col bg-gray-50">
+      ${pageHeader('About')}
+      <div class="flex-1 overflow-y-auto px-4 py-6 fade-in">
+        <div class="text-center mb-6">
+          <div class="text-6xl mb-3">📦</div>
+          <h1 class="text-2xl font-bold text-gray-900">${escapeHtml(info.name)}</h1>
+          <p class="text-gray-500 text-sm mt-1">Electronic parts inventory</p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden max-w-sm mx-auto">
+          <div class="flex justify-between px-4 py-3 border-b border-gray-100">
+            <span class="text-sm text-gray-500">Version</span>
+            <span class="text-sm font-medium text-gray-900">${escapeHtml(info.version)}</span>
+          </div>
+          <div class="flex justify-between px-4 py-3">
+            <span class="text-sm text-gray-500">Developer</span>
+            <span class="text-sm font-medium text-gray-900">${escapeHtml(info.developer)}</span>
+          </div>
+        </div>
+        <p class="text-center text-xs text-gray-400 mt-6">© ${new Date().getFullYear()} ${escapeHtml(info.developer)}</p>
+      </div>
+    </div>
+  `);
+  wireBack('menu');
+}
+
 // ── Data loading ──────────────────────────────────────────────────────────────
 async function loadComponents() {
   try {
@@ -624,11 +938,17 @@ async function render() {
     case 'scan':      renderScanner();   break;
     case 'form':      renderForm(S.current); break;
     case 'detail':    renderDetail(S.current); break;
+    case 'menu':      renderMenu(); break;
+    case 'settings':  renderSettings(); break;
+    case 'backup':    renderBackup(); break;
+    case 'users':     await renderUsers(); break;
+    case 'about':     await renderAbout(); break;
     default:          renderInventory();
   }
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
+applyTheme();
 await checkAuthStatus();
 if (S.token) {
   try { await loadComponents(); S.view = 'inventory'; }

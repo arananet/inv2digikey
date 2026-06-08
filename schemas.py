@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import List, Optional
 from datetime import datetime
 
 
@@ -8,9 +8,28 @@ class UserCreate(BaseModel):
     password: str
 
 
+class UserOut(BaseModel):
+    id: int
+    username: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class PasswordUpdate(BaseModel):
+    password: str
+
+
 class Token(BaseModel):
     access_token: str
     token_type: str
+
+
+class About(BaseModel):
+    name: str
+    version: str
+    developer: str
 
 
 class ComponentBase(BaseModel):
@@ -39,3 +58,15 @@ class Component(ComponentBase):
 
     class Config:
         from_attributes = True
+
+
+class Backup(BaseModel):
+    version: str
+    exported_at: datetime
+    component_count: int
+    components: List[Component]
+
+
+class RestoreRequest(BaseModel):
+    # Accepts a backup document; extra fields (version, exported_at, …) are ignored.
+    components: List[ComponentBase]

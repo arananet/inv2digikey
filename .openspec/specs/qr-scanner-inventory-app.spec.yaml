@@ -38,7 +38,7 @@ out_of_scope:
   - Mouser API integration
   - Multi-user collaboration or sharing of inventories
   - Barcode label printing
-  - CSV import/export
+  - CSV import (CSV export is implemented — see the app-industrialization spec)
 
 test_plan:
   - id: TP-01

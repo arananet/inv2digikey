@@ -13,6 +13,12 @@ Mobile-friendly web app to scan QR codes and barcodes from electronic components
 - **Inventory management** — store, search, edit, and delete component entries with quantities and locations
 - **DigiKey integration** — stores DigiKey and manufacturer part numbers for easy cross-reference
 - **Authentication** — username/password protected; first user registers freely, subsequent users require a setup token
+- **Main menu** — single hub for every feature, reachable from the inventory header
+- **Light / dark mode** — appearance toggle in Settings, remembered across sessions
+- **Backup & restore** — download the whole inventory as JSON and re-import it (merge or replace)
+- **CSV export** — download the inventory as a spreadsheet-friendly CSV
+- **User management** — list, add, and remove users, and reset passwords, from within the app
+- **About page** — shows the app version and developer
 - **Mobile-first UI** — responsive design optimized for smartphone use in the field
 - **Railway-ready** — deploys in one click with PostgreSQL add-on
 
