@@ -19,10 +19,15 @@ Guidelines:
 ## [Unreleased]
 
 ### Added
--
+- Main menu hub linking every feature from the inventory header (spec: app-industrialization).
+- Settings page with a light/dark mode toggle, persisted in localStorage (spec: app-industrialization).
+- Inventory backup & restore: `GET /api/backup` and `POST /api/restore` (merge/replace) (spec: app-industrialization).
+- CSV export: `GET /api/components/export/csv` (spec: app-industrialization).
+- User management: `GET/POST /api/users`, `DELETE /api/users/{id}`, `PUT /api/users/{id}/password` (spec: app-industrialization).
+- About page and `GET /api/about` exposing app version and developer (Eduardo Arana) (spec: app-industrialization).
 
 ### Changed
--
+- Standardized navigation back buttons on a consistently sized SVG arrow that returns to a defined in-app view instead of relying on browser history (spec: app-industrialization).
 
 ### Deprecated
 -

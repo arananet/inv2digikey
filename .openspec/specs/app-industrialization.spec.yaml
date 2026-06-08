@@ -1,0 +1,77 @@
+version: "1"
+slug: app-industrialization
+title: "App Industrialization — Menu, Settings, Backup/Restore, CSV, Users, About"
+type: feature
+status: approved
+
+author: "Eduardo Arana"
+created_at: "2026-06-08"
+updated_at: "2026-06-08"
+
+description: |
+  Rounds out inv2digikey into a complete, self-serviceable application. Adds a
+  main menu that exposes every capability from one place, a settings page with a
+  light/dark appearance toggle, full inventory backup & restore (JSON) and CSV
+  export, user maintenance (list / create / delete / reset password), and an
+  About page showing the app version and developer (Eduardo Arana). Also fixes
+  the navigation back buttons so they use a consistently sized icon and always
+  return to a known in-app view rather than relying on browser history.
+
+acceptance_criteria:
+  - id: AC-01
+    description: "An authenticated user can open a main menu from the inventory header that links to Inventory, Scan, Add component, Export CSV, Backup & Restore, User management, Settings, About, and Logout."
+  - id: AC-02
+    description: "Settings page offers a light/dark appearance toggle; the choice is persisted in localStorage and re-applied on load so the whole UI switches theme."
+  - id: AC-03
+    description: "GET /api/backup returns a JSON document containing all of the current user's components; the response is suitable for saving as a file."
+  - id: AC-04
+    description: "POST /api/restore accepts a previously exported backup document and recreates the components for the current user; mode=replace clears the user's existing components first, mode=merge appends."
+  - id: AC-05
+    description: "GET /api/components/export/csv returns a text/csv attachment with one row per component and a header row covering all component fields."
+  - id: AC-06
+    description: "GET /api/users lists all users (id, username, created_at); an authenticated user can POST /api/users to create a user, DELETE /api/users/{id} to remove one (never the last user, never their own account), and PUT /api/users/{id}/password to reset a password."
+  - id: AC-07
+    description: "GET /api/about returns the application name, semantic version, and developer name 'Eduardo Arana'; the About page in the UI displays these values."
+  - id: AC-08
+    description: "Every sub-page back/close control uses a consistently sized icon and navigates to a defined in-app view (inventory or the main menu); no navigation depends on browser history."
+
+out_of_scope:
+  - Role-based access control / admin vs. non-admin distinction (all authenticated users share maintenance rights)
+  - CSV import (restore is JSON-only; CSV is export-only)
+  - Per-user theme storage on the server (theme is client-side only)
+  - Scheduled / automated backups
+
+test_plan:
+  - id: TP-01
+    ac: AC-07
+    description: "GET /api/about returns 200 with name, version, and developer == 'Eduardo Arana'."
+  - id: TP-02
+    ac: AC-05
+    description: "GET /api/components/export/csv returns 200, content-type text/csv, a header row, and a data row for each of the user's components."
+  - id: TP-03
+    ac: AC-03
+    description: "GET /api/backup returns the current user's components as JSON with a version and components list."
+  - id: TP-04
+    ac: AC-04
+    description: "POST /api/restore with mode=replace clears existing components and inserts those in the payload; mode=merge appends without deleting."
+  - id: TP-05
+    ac: AC-06
+    description: "GET /api/users lists users; POST creates a user; PUT /api/users/{id}/password lets that user log in with the new password; DELETE removes a user but is rejected for the caller's own account and for the last remaining user."
+
+implementation_skill: null
+
+eval_plan:
+  scenarios: []
+  metrics: []
+
+technical_notes: |
+  Backend is FastAPI; CSV is built with the stdlib csv module and returned via a
+  Response with a Content-Disposition attachment header. User-maintenance
+  endpoints reuse the existing JWT auth dependency — any authenticated user may
+  manage users (single shared operator model). Frontend is the single-page
+  static/index.html (vanilla JS + Tailwind via CDN); dark mode is implemented
+  with a body.dark class plus scoped CSS overrides for the Tailwind utility
+  classes in use, avoiding a rewrite of every template string.
+
+linked_issues: []
+linked_prs: []

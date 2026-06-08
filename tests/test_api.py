@@ -163,6 +163,102 @@ def test_delete_component(auth_client):
     assert res.status_code == 404
 
 
+# ── app-industrialization spec ────────────────────────────────────────────────
+
+def test_about_returns_metadata(client):
+    """TP-01: GET /api/about returns name, version, developer == 'Eduardo Arana'."""
+    res = client.get("/api/about")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["name"]
+    assert data["version"]
+    assert data["developer"] == "Eduardo Arana"
+
+
+def test_export_csv(auth_client):
+    """TP-02: CSV export returns text/csv with a header row and a row per component."""
+    auth_client.post("/api/components", json={"digikey_pn": "CSV-A", "quantity": 3})
+    auth_client.post("/api/components", json={"digikey_pn": "CSV-B", "quantity": 7})
+
+    res = auth_client.get("/api/components/export/csv")
+    assert res.status_code == 200
+    assert res.headers["content-type"].startswith("text/csv")
+    lines = [ln for ln in res.text.splitlines() if ln.strip()]
+    assert lines[0].startswith("digikey_pn,")
+    assert len(lines) == 3  # header + 2 components
+    assert any("CSV-A" in ln for ln in lines[1:])
+
+
+def test_backup_returns_components(auth_client):
+    """TP-03: GET /api/backup returns the user's components with a version + count."""
+    auth_client.post("/api/components", json={"digikey_pn": "BK-1", "quantity": 1})
+    res = auth_client.get("/api/backup")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["version"]
+    assert data["component_count"] == 1
+    assert data["components"][0]["digikey_pn"] == "BK-1"
+
+
+def test_restore_replace_and_merge(auth_client):
+    """TP-04: restore replace clears then inserts; merge appends."""
+    auth_client.post("/api/components", json={"digikey_pn": "ORIGINAL", "quantity": 1})
+
+    payload = {"components": [
+        {"digikey_pn": "RESTORED-1", "quantity": 5},
+        {"digikey_pn": "RESTORED-2", "quantity": 6},
+    ]}
+
+    res = auth_client.post("/api/restore?mode=replace", json=payload)
+    assert res.status_code == 200
+    assert res.json()["restored"] == 2
+    pns = {c["digikey_pn"] for c in auth_client.get("/api/components").json()}
+    assert pns == {"RESTORED-1", "RESTORED-2"}  # ORIGINAL removed
+
+    res = auth_client.post("/api/restore?mode=merge", json={"components": [{"digikey_pn": "MERGED", "quantity": 1}]})
+    assert res.status_code == 200
+    pns = {c["digikey_pn"] for c in auth_client.get("/api/components").json()}
+    assert pns == {"RESTORED-1", "RESTORED-2", "MERGED"}
+
+
+def test_user_maintenance(auth_client):
+    """TP-05: list/create users; reset password lets the new user log in; delete guards."""
+    # testuser (from auth_client fixture) already exists
+    res = auth_client.get("/api/users")
+    assert res.status_code == 200
+    assert any(u["username"] == "testuser" for u in res.json())
+    self_id = next(u["id"] for u in res.json() if u["username"] == "testuser")
+
+    # Create a second user
+    res = auth_client.post("/api/users", json={"username": "operator", "password": "initialpw"})
+    assert res.status_code == 201
+    new_id = res.json()["id"]
+
+    # Reset that user's password, then confirm login works with the new password
+    res = auth_client.put(f"/api/users/{new_id}/password", json={"password": "changedpw"})
+    assert res.status_code == 200
+    res = auth_client.post(
+        "/api/auth/login",
+        data={"username": "operator", "password": "changedpw"},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert res.status_code == 200
+
+    # Cannot delete own account
+    assert auth_client.delete(f"/api/users/{self_id}").status_code == 400
+
+    # Can delete the other user
+    assert auth_client.delete(f"/api/users/{new_id}").status_code == 204
+
+    # Cannot delete the last remaining user
+    assert auth_client.delete(f"/api/users/{self_id}").status_code == 400
+
+
+def test_user_endpoints_require_auth(client):
+    """User maintenance endpoints reject unauthenticated requests."""
+    assert client.get("/api/users").status_code == 401
+
+
 def test_cannot_access_other_users_component(client):
     """User A cannot read or delete User B's component."""
     # Register two users
