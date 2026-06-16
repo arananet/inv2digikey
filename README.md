@@ -114,16 +114,32 @@ Railway auto-detects `railway.toml` and starts the app. First visit → register
 
 ---
 
-## Scanning DigiKey labels
+## Scanning distributor labels
 
-DigiKey bag labels include a **2D Data Matrix** barcode that encodes structured data:
+The app auto-detects and parses three label families:
 
-- `K` prefix — DigiKey part number (e.g. `RHM33.0AFCT-ND`)
-- `1P` prefix — Manufacturer part number (e.g. `ESR18EZPF33R0`)
-- `30P` prefix — Quantity
-- `4L` prefix — Manufacturer name
+**DigiKey / Mouser** — a **2D Data Matrix** in the ISO/IEC 15434 format (GS/RS control characters):
 
-The app parses this automatically. You can also scan regular Code 128 / EAN barcodes and enter additional fields manually.
+- `K` / `P` prefix — distributor part number (e.g. `RHM33.0AFCT-ND`)
+- `1P` prefix — manufacturer part number (e.g. `ESR18EZPF33R0`)
+- `30P` prefix — quantity
+- `1V` / `4V` prefix — manufacturer name
+
+**TME (tme.eu)** — a plain-text **QR code** with space-separated `KEY:VALUE` tokens, e.g.
+`QTY:5 PN:SN74LS125AD MFR:TEXASINSTRUMENTS MPN:SN74LS125AD PO:7910976/3 https://www.tme.eu/details/SN74LS125AD`:
+
+- `QTY` — quantity
+- `PN` — TME order symbol (used as the primary part number)
+- `MPN` — manufacturer part number
+- `MFR` — manufacturer name
+
+**Plain barcodes** — any other Code 128 / EAN code; the raw value becomes the part number and you fill in the rest manually.
+
+The label parser lives in `static/parser.js` and is covered by Node regression tests:
+
+```bash
+node tests/parser.test.mjs
+```
 
 ---
 

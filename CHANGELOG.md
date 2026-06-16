@@ -25,9 +25,11 @@ Guidelines:
 - CSV export: `GET /api/components/export/csv` (spec: app-industrialization).
 - User management: `GET/POST /api/users`, `DELETE /api/users/{id}`, `PUT /api/users/{id}/password` (spec: app-industrialization).
 - About page and `GET /api/about` exposing app version and developer (Eduardo Arana) (spec: app-industrialization).
+- TME (tme.eu) QR label parsing — extracts quantity, manufacturer, MPN, and TME order symbol (spec: tme-barcode-support).
 
 ### Changed
 - Standardized navigation back buttons on a consistently sized SVG arrow that returns to a defined in-app view instead of relying on browser history (spec: app-industrialization).
+- Moved the label parser out of `static/index.html` into `static/parser.js` (ES module) with Node regression tests (spec: tme-barcode-support).
 
 ### Deprecated
 -
