@@ -1,0 +1,64 @@
+version: "1"
+slug: tme-barcode-support
+title: "TME (tme.eu) QR / Data Matrix parsing"
+type: feature
+status: approved
+
+author: "Eduardo Arana"
+created_at: "2026-06-16"
+updated_at: "2026-06-16"
+
+description: |
+  Extends the label parser so TME (tme.eu) component labels are recognised and
+  parsed like DigiKey and Mouser labels. Unlike DigiKey/Mouser — which use the
+  ISO/IEC 15434 format with GS/RS control characters — TME encodes a plain-text
+  QR code with space-separated KEY:VALUE tokens and a tme.eu details URL, e.g.
+  "QTY:5 PN:SN74LS125AD MFR:TEXASINSTRUMENTS MPN:SN74LS125AD PO:7910976/3
+  https://www.tme.eu/details/SN74LS125AD". Previously the whole string was
+  dropped into the part-number field; now the quantity, manufacturer, MPN, and
+  TME order symbol are extracted into the correct fields. The parser is also
+  moved out of index.html into static/parser.js so it can be unit-tested.
+
+acceptance_criteria:
+  - id: AC-01
+    description: "A TME QR string is detected (by a tme.eu URL or the presence of QTY: and MPN: tokens) and routed to the TME parsing branch rather than the plain-barcode fallback."
+  - id: AC-02
+    description: "From a TME label the parser extracts: quantity (QTY), manufacturer part number (MPN), manufacturer name (MFR), and the TME order symbol (PN) as the primary part number; if no PN token is present the MPN is used as the primary part number."
+  - id: AC-03
+    description: "The embedded tme.eu URL token is never mis-parsed into a field (its leading 'HTTPS:' must not be treated as a KEY:VALUE token)."
+  - id: AC-04
+    description: "DigiKey/Mouser ISO-15434 labels and plain barcodes continue to parse exactly as before (no regression)."
+
+out_of_scope:
+  - Live TME catalog/price/stock lookup
+  - Parsing TME 1D order-code barcodes (only the 2D QR is covered)
+  - Extracting the TME purchase-order (PO) number into a dedicated field
+
+test_plan:
+  - id: TP-01
+    ac: AC-02
+    description: "parseBarcode() on the sample TME string returns quantity=5, manufacturer_pn='SN74LS125AD', manufacturer='TEXASINSTRUMENTS', digikey_pn='SN74LS125AD'."
+  - id: TP-02
+    ac: AC-03
+    description: "parseBarcode() on a TME string places no part of the https://www.tme.eu/... URL into any parsed field, and falls back to MPN as the primary part number when PN is absent."
+  - id: TP-03
+    ac: AC-02
+    description: "parseBarcode() keeps a distinct TME order symbol (PN) separate from the manufacturer part number (MPN)."
+  - id: TP-04
+    ac: AC-04
+    description: "parseBarcode() regression: a DigiKey Data Matrix string still yields the correct DigiKey PN, MPN, quantity, and manufacturer; a plain barcode still becomes the part number."
+
+implementation_skill: null
+
+eval_plan:
+  scenarios: []
+  metrics: []
+
+technical_notes: |
+  Parser lives in static/parser.js (ES module) and is imported by static/index.html
+  via `import { parseBarcode } from '/static/parser.js'`. Regression tests run with
+  Node: `node tests/parser.test.mjs`. TME tokens are whitespace-split; URL tokens
+  (matching ^https?://) are skipped before the first ':' is used to split KEY:VALUE.
+
+linked_issues: []
+linked_prs: []
