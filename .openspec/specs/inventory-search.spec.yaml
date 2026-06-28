@@ -1,0 +1,63 @@
+version: "1"
+slug: inventory-search
+title: "Button-driven, field-scoped inventory search"
+type: feature
+status: approved
+
+author: "Eduardo Arana"
+created_at: "2026-06-16"
+updated_at: "2026-06-16"
+
+description: |
+  Reworks the inventory search to be usable on mobile. The previous search
+  re-rendered the whole inventory view on every keystroke, which destroyed and
+  recreated the input element — on phones this dismissed the keyboard / lost the
+  cursor after each character. Search now runs only when the user presses the
+  Search button, the Enter key, or taps a field chip; typing updates state
+  without re-rendering, so the keyboard stays open. The user can also scope the
+  search to a specific field (Reference / DigiKey PN, Mfr ref / manufacturer PN,
+  Description, Manufacturer, Location) or search across all of them.
+
+acceptance_criteria:
+  - id: AC-01
+    description: "Typing in the search box does not re-render the inventory list; the term is only applied when the user presses Search, presses Enter, or taps a field chip."
+  - id: AC-02
+    description: "A field selector lets the user scope the search to All, Reference (digikey_pn), Mfr ref (manufacturer_pn), Description, Manufacturer, or Location; the active field is visually highlighted."
+  - id: AC-03
+    description: "Field-scoped search matches only the chosen field (case-insensitive substring); 'All' matches across digikey_pn, manufacturer_pn, description, manufacturer, and location."
+  - id: AC-04
+    description: "A clear (×) control resets the search and shows the full list; missing/null component fields never cause an error."
+
+out_of_scope:
+  - Server-side / paginated search (filtering stays client-side over the loaded list)
+  - Fuzzy or ranked relevance matching
+  - Saved searches or search history
+
+test_plan:
+  - id: TP-01
+    ac: AC-03
+    description: "filterComponents(list, term, 'all') matches a term found in manufacturer, description, or location; returns the full list for an empty/whitespace term."
+  - id: TP-02
+    ac: AC-03
+    description: "filterComponents(list, 'SN74LS125AD', 'manufacturer_pn') matches the part; the same term scoped to 'digikey_pn' does not match it."
+  - id: TP-03
+    ac: AC-03
+    description: "filterComponents is case-insensitive and substring-based (e.g. 'DRAWER' matches 'Drawer A1')."
+  - id: TP-04
+    ac: AC-04
+    description: "filterComponents tolerates null/undefined field values without throwing."
+
+implementation_skill: null
+
+eval_plan:
+  scenarios: []
+  metrics: []
+
+technical_notes: |
+  Filtering logic lives in static/search.js (pure ES module) and is imported by
+  static/index.html. loadComponents() now fetches the full list (no backend
+  ?search= param) so the client-side field filter is the single source of truth.
+  Regression tests run with Node: `node tests/search.test.mjs`.
+
+linked_issues: []
+linked_prs: []
