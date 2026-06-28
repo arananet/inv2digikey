@@ -38,6 +38,7 @@
 
 <script type="module">
 import { parseBarcode } from '/static/parser.js';
+import { SEARCH_FIELDS, filterComponents as filterBy } from '/static/search.js';
 // ── Barcode detector: native API (Chrome/Android) → ZXing WASM fallback ───────
 let _detector = null;
 
@@ -81,6 +82,7 @@ const S = {
   view: 'inventory',
   components: [],
   search: '',
+  searchField: 'all',
   current: null,
   scanned: null,
   scannerRunning: false,
@@ -240,15 +242,21 @@ function renderAuth(isRegister) {
   });
 }
 
+function filterComponents() {
+  return filterBy(S.components, S.search, S.searchField);
+}
+
+// Re-run the search from the input's current value (called by the button / Enter).
+function applySearch() {
+  const el = document.getElementById('search-input');
+  if (el) S.search = el.value;
+  renderInventory();
+}
+
 function renderInventory() {
-  const filtered = S.components.filter(c => {
-    if (!S.search) return true;
-    const q = S.search.toLowerCase();
-    return (c.digikey_pn||'').toLowerCase().includes(q)
-      || (c.manufacturer_pn||'').toLowerCase().includes(q)
-      || (c.description||'').toLowerCase().includes(q)
-      || (c.manufacturer||'').toLowerCase().includes(q);
-  });
+  const filtered = filterComponents();
+  const searching = S.search.trim().length > 0;
+  const fieldLabel = (SEARCH_FIELDS.find(f => f.key === S.searchField) || SEARCH_FIELDS[0]).label;
 
   setHTML(`
     <div class="min-h-screen flex flex-col">
@@ -256,23 +264,38 @@ function renderInventory() {
         <div class="flex items-center justify-between mb-2">
           <h1 class="text-lg font-bold">📦 inv2digikey</h1>
           <div class="flex items-center gap-3">
-            <span class="text-blue-200 text-sm">${S.components.length} parts</span>
+            <span class="text-blue-200 text-sm">${searching ? `${filtered.length} / ${S.components.length}` : `${S.components.length} parts`}</span>
             <button id="btn-menu" aria-label="Menu" class="p-1.5 -mr-1 rounded-lg hover:bg-white/10 active:bg-white/20">
               <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
             </button>
           </div>
         </div>
-        <input id="search-input" type="search" placeholder="Search parts…" value="${escapeHtml(S.search)}"
-          class="w-full bg-blue-500 placeholder-blue-300 text-white border border-blue-400 rounded-lg px-3 py-2 text-sm">
+        <div class="flex gap-2">
+          <div class="relative flex-1">
+            <input id="search-input" type="search" enterkeyhint="search" placeholder="Search ${escapeHtml(fieldLabel.toLowerCase())}…" value="${escapeHtml(S.search)}"
+              class="w-full bg-blue-500 placeholder-blue-300 text-white border border-blue-400 rounded-lg pl-3 pr-8 py-2 text-sm">
+            ${searching ? `<button id="btn-clear" aria-label="Clear" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-blue-200 hover:text-white p-1">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>` : ''}
+          </div>
+          <button id="btn-search" class="bg-white text-blue-600 font-semibold text-sm px-4 rounded-lg active:bg-blue-50 shrink-0">Search</button>
+        </div>
+        <div class="flex gap-1.5 mt-2 overflow-x-auto pb-0.5 -mx-1 px-1">
+          ${SEARCH_FIELDS.map(f => `
+            <button class="field-chip whitespace-nowrap text-xs px-2.5 py-1 rounded-full border ${
+              S.searchField === f.key ? 'bg-white text-blue-700 border-white font-semibold' : 'bg-blue-500/40 text-blue-100 border-blue-400'
+            }" data-field="${f.key}">${f.label}</button>
+          `).join('')}
+        </div>
       </header>
 
       <main class="flex-1 overflow-y-auto px-3 py-3 pb-24 space-y-2 fade-in">
         ${filtered.length === 0 ? `
           <div class="text-center text-gray-400 mt-16">
             <div class="text-5xl mb-3">🔍</div>
-            <p class="font-medium">${S.search ? 'No results found' : 'No components yet'}</p>
-            <p class="text-sm mt-1">${S.search ? 'Try a different search' : 'Tap Scan or + to add your first part'}</p>
+            <p class="font-medium">${searching ? 'No results found' : 'No components yet'}</p>
+            <p class="text-sm mt-1">${searching ? `No match for “${escapeHtml(S.search.trim())}” in ${escapeHtml(fieldLabel)}` : 'Tap Scan or + to add your first part'}</p>
           </div>
         ` : filtered.map(componentCard).join('')}
       </main>
@@ -291,7 +314,18 @@ function renderInventory() {
     </div>
   `);
 
-  document.getElementById('search-input').oninput = e => { S.search = e.target.value; renderInventory(); };
+  // Keep the typed term in state without re-rendering, so the mobile keyboard
+  // stays open while typing; the list only refreshes on Search / Enter / chip tap.
+  const searchInput = document.getElementById('search-input');
+  searchInput.oninput = e => { S.search = e.target.value; };
+  searchInput.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); applySearch(); } };
+
+  document.getElementById('btn-search').onclick = applySearch;
+  document.getElementById('btn-clear')?.addEventListener('click', () => { S.search = ''; renderInventory(); });
+  document.querySelectorAll('.field-chip').forEach(el => {
+    el.onclick = () => { S.searchField = el.dataset.field; applySearch(); };
+  });
+
   document.getElementById('btn-menu').onclick = () => { S.view = 'menu'; render(); };
   document.getElementById('btn-nav-scan').onclick = () => { S.view = 'scan'; render(); };
   document.getElementById('btn-nav-add').onclick  = () => { S.current = null; S.view = 'form'; render(); };
@@ -881,8 +915,10 @@ async function renderAbout() {
 
 // ── Data loading ──────────────────────────────────────────────────────────────
 async function loadComponents() {
+  // Always load the full list; filtering happens client-side in filterComponents()
+  // so the search button and field chips work without extra round-trips.
   try {
-    S.components = await api('GET', `/api/components${S.search ? `?search=${encodeURIComponent(S.search)}` : ''}`);
+    S.components = await api('GET', '/api/components');
   } catch { S.components = []; }
 }
 

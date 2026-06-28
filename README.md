@@ -10,7 +10,8 @@ Mobile-friendly web app to scan QR codes and barcodes from electronic components
 
 - **Barcode & QR Code scanning** — uses your device camera to scan DigiKey Data Matrix codes, QR codes, and standard barcodes
 - **Auto-parsing** — extracts DigiKey PN, manufacturer PN, quantity, and description directly from scanned labels
-- **Inventory management** — store, search, edit, and delete component entries with quantities and locations
+- **Inventory management** — store, edit, and delete component entries with quantities and locations
+- **Field-scoped search** — search by reference, manufacturer reference, description, manufacturer, or location (or all), driven by an explicit Search button so it stays comfortable to type on a phone
 - **DigiKey integration** — stores DigiKey and manufacturer part numbers for easy cross-reference
 - **Authentication** — username/password protected; first user registers freely, subsequent users require a setup token
 - **Main menu** — single hub for every feature, reachable from the inventory header

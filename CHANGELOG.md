@@ -26,9 +26,11 @@ Guidelines:
 - User management: `GET/POST /api/users`, `DELETE /api/users/{id}`, `PUT /api/users/{id}/password` (spec: app-industrialization).
 - About page and `GET /api/about` exposing app version and developer (Eduardo Arana) (spec: app-industrialization).
 - TME (tme.eu) QR label parsing — extracts quantity, manufacturer, MPN, and TME order symbol (spec: tme-barcode-support).
+- Field-scoped inventory search — target Reference, Mfr ref, Description, Manufacturer, or Location, or search All (spec: inventory-search).
 
 ### Changed
 - Standardized navigation back buttons on a consistently sized SVG arrow that returns to a defined in-app view instead of relying on browser history (spec: app-industrialization).
+- Inventory search now runs on an explicit Search button / Enter / field chip instead of on every keystroke, so the mobile keyboard no longer closes after each character (spec: inventory-search).
 - Moved the label parser out of `static/index.html` into `static/parser.js` (ES module) with Node regression tests (spec: tme-barcode-support).
 
 ### Deprecated
